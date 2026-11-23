@@ -35,19 +35,19 @@ export class GarageSceneController {
   private disposed = false;
   private lastTime = 0;
 
-  private targetYaw = -0.58;
-  private currentYaw = -0.58;
+  private targetYaw = 0;
+  private currentYaw = 0;
   private dragging = false;
   private lastPointerX = 0;
   private dropVelocity = 0;
   private dropOffset = 0;
   private headlightsOn = true;
 
-  private camPreset: GarageCameraPreset = 'hero';
-  private camPos = new THREE.Vector3(0, 2.3, 7.2);
-  private camLook = new THREE.Vector3(0, 0.85, 0);
-  private targetCamPos = new THREE.Vector3(0, 2.3, 7.2);
-  private targetCamLook = new THREE.Vector3(0, 0.85, 0);
+  private camPreset: GarageCameraPreset = 'profile';
+  private camPos = new THREE.Vector3(0, 1.35, 6.2);
+  private camLook = new THREE.Vector3(0, 0.88, 0);
+  private targetCamPos = new THREE.Vector3(0, 1.35, 6.2);
+  private targetCamLook = new THREE.Vector3(0, 0.88, 0);
   private resizeObserver: ResizeObserver;
 
   constructor(container: HTMLElement) {

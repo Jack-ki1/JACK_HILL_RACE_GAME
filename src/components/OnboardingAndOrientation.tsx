@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame, Fuel, RotateCw, Smartphone, Wrench, X } from 'lucide-react';
+import { Flame, Fuel, RotateCw, Wrench, X } from 'lucide-react';
 
 interface FirstRunTutorialOverlayProps {
   onDismiss: () => void;
@@ -77,24 +77,5 @@ export const FirstRunTutorialOverlay: React.FC<FirstRunTutorialOverlayProps> = (
         </button>
       </div>
     </div>
-  </div>
-);
-
-export const PortraitOrientationBanner: React.FC<{ onDismiss: () => void }> = ({
-  onDismiss,
-}) => (
-  <div className="pointer-events-auto fixed top-16 left-1/2 z-20 flex w-[92%] max-w-sm -translate-x-1/2 items-center justify-between gap-2.5 rounded-xl border border-amber-400/50 bg-[#080d13]/95 px-3 py-2 text-xs text-white shadow-xl">
-    <div className="flex items-center gap-2">
-      <Smartphone className="h-4 w-4 shrink-0 rotate-90 text-amber-300" />
-      <span>Rotate to landscape for wider dual-pedal view.</span>
-    </div>
-    <button
-      type="button"
-      onClick={onDismiss}
-      aria-label="Dismiss orientation tip"
-      className="rounded-md border border-white/15 px-2 py-0.5 text-[10px] font-bold text-slate-300 hover:text-white"
-    >
-      OK
-    </button>
   </div>
 );

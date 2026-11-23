@@ -41,6 +41,13 @@ export interface VehicleRig3D {
   dispose: () => void;
 }
 
+export interface GhostRig3D {
+  root: THREE.Group;
+  wheelRear: THREE.Mesh;
+  wheelFront: THREE.Mesh;
+  dispose: () => void;
+}
+
 function makeTube(points: [number, number, number][], radius: number): THREE.TubeGeometry {
   const curve = new THREE.CatmullRomCurve3(
     points.map((p) => new THREE.Vector3(p[0], p[1], p[2])),
@@ -1745,4 +1752,66 @@ export function buildFuelCan3D(): THREE.Group {
   g.add(bar1, bar2);
 
   return g;
+}
+
+export function buildGhostVehicle3D(config: VehicleConfig): GhostRig3D {
+  const root = new THREE.Group();
+  const isBike = config.id === 'superbike';
+  const ghostBodyMat = new THREE.MeshBasicMaterial({
+    color: '#fbbf24',
+    transparent: true,
+    opacity: 0.28,
+    depthWrite: false,
+  });
+  const ghostWheelMat = new THREE.MeshBasicMaterial({
+    color: '#f59e0b',
+    transparent: true,
+    opacity: 0.32,
+    depthWrite: false,
+  });
+
+  const bodyDepth = isBike ? 0.42 : 1.32;
+  const hull = new THREE.Mesh(
+    new THREE.BoxGeometry(config.chassisLength * 0.92, config.chassisHeight * 0.48, bodyDepth),
+    ghostBodyMat,
+  );
+  hull.position.set(0, 0.2, 0);
+  root.add(hull);
+
+  const cabin = new THREE.Mesh(
+    new THREE.BoxGeometry(config.chassisLength * 0.46, config.chassisHeight * 0.42, bodyDepth * 0.84),
+    ghostBodyMat,
+  );
+  cabin.position.set(config.headX * 0.6, config.chassisHeight * 0.54, 0);
+  root.add(cabin);
+
+  const rRadius = config.wheelRadius * config.rearWheelScale;
+  const fRadius = config.wheelRadius * config.frontWheelScale;
+  const wWidth = isBike ? 0.28 : 0.4;
+
+  const rearGeo = new THREE.CylinderGeometry(rRadius, rRadius, wWidth, 18);
+  rearGeo.rotateX(Math.PI / 2);
+  const wheelRear = new THREE.Mesh(rearGeo, ghostWheelMat);
+  wheelRear.position.set(-config.wheelbase * 0.5, -config.suspensionRest * 0.72, 0);
+  root.add(wheelRear);
+
+  const frontGeo = new THREE.CylinderGeometry(fRadius, fRadius, wWidth, 18);
+  frontGeo.rotateX(Math.PI / 2);
+  const wheelFront = new THREE.Mesh(frontGeo, ghostWheelMat);
+  wheelFront.position.set(config.wheelbase * 0.5, -config.suspensionRest * 0.72, 0);
+  root.add(wheelFront);
+
+  // Place slightly behind player Z-plane so rival never obscures player rig in orthographic side-view
+  root.position.z = -1.35;
+
+  const dispose = () => {
+    hull.geometry.dispose();
+    cabin.geometry.dispose();
+    rearGeo.dispose();
+    frontGeo.dispose();
+    ghostBodyMat.dispose();
+    ghostWheelMat.dispose();
+  };
+
+  return { root, wheelRear, wheelFront, dispose };
 }

@@ -88,7 +88,7 @@ export const GarageModal: React.FC<GarageModalProps> = ({
     initialVehicleId ?? save.selectedVehicle,
   );
   const [drawer, setDrawer] = useState<GarageDrawer>(null);
-  const [camPreset, setCamPreset] = useState<GarageCameraPreset>('hero');
+  const [camPreset, setCamPreset] = useState<GarageCameraPreset>('profile');
   const [lightsOn, setLightsOn] = useState<boolean>(true);
 
   useEffect(() => {
@@ -253,6 +253,26 @@ export const GarageModal: React.FC<GarageModalProps> = ({
         </div>
       </div>
 
+      {/* Mobile Compact Spec Strip (< sm) */}
+      <div className="pointer-events-none relative z-10 flex justify-center px-4 sm:hidden">
+        <div className="panel-bevel pointer-events-auto flex items-center gap-2 rounded-xl border border-white/15 px-3 py-1.5 text-[10px] font-bold">
+          <span
+            className={`flex h-6 w-6 items-center justify-center rounded border font-display text-sm font-extrabold italic ${gradeColor}`}
+          >
+            {classGrade}
+          </span>
+          <span className="font-mono-num text-sky-300">PWR {powerScore}</span>
+          <span className="text-slate-500">·</span>
+          <span className="font-mono-num text-amber-300">SUSP {suspScore}</span>
+          <span className="text-slate-500">·</span>
+          <span className="font-mono-num text-emerald-300">GRIP {gripScore}</span>
+          <span className="text-slate-500">·</span>
+          <span className="font-mono-num text-white">
+            {Math.round(vehicle.topSpeedMs * 3.6 * (1 + 0.045 * (levels.engine ?? 0)))} km/h
+          </span>
+        </div>
+      </div>
+
       {/* Middle Zone: Left Vehicle Spec & Quick-Tune Card + Right Customization Rail */}
       <div className="pointer-events-none relative z-10 flex flex-1 items-center justify-between gap-4 px-4 sm:px-6">
         {/* Left Spec Sheet + Quick Upgrade Controls */}
@@ -355,11 +375,18 @@ export const GarageModal: React.FC<GarageModalProps> = ({
         </div>
 
         {/* Right Customization Actions & Slide-out Drawer */}
-        <div className="pointer-events-auto ml-auto flex items-center gap-3">
+        <div className="pointer-events-auto ml-auto flex items-center gap-2 sm:gap-3">
           {drawer === 'PAINT' && (
-            <div className="panel-bevel w-60 rounded-2xl border border-white/20 p-3.5">
-              <div className="mb-2.5 font-display text-xs font-extrabold tracking-widest text-amber-300 uppercase italic">
-                SELECT FINISH
+            <div className="panel-bevel w-56 rounded-2xl border border-white/20 p-3 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-36 max-sm:z-30 max-sm:w-auto sm:w-60 sm:p-3.5">
+              <div className="mb-2.5 flex items-center justify-between font-display text-xs font-extrabold tracking-widest text-amber-300 uppercase italic">
+                <span>SELECT FINISH</span>
+                <button
+                  type="button"
+                  onClick={() => setDrawer(null)}
+                  className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] text-slate-300 sm:hidden"
+                >
+                  CLOSE
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {PAINT_SWATCHES.map((sw) => {
@@ -388,9 +415,16 @@ export const GarageModal: React.FC<GarageModalProps> = ({
           )}
 
           {drawer === 'NEON' && (
-            <div className="panel-bevel w-64 rounded-2xl border border-white/20 p-3.5">
-              <div className="mb-2.5 font-display text-xs font-extrabold tracking-widest text-pink-300 uppercase italic">
-                UNDERGLOW NEON KIT
+            <div className="panel-bevel w-60 rounded-2xl border border-white/20 p-3 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-36 max-sm:z-30 max-sm:w-auto sm:w-64 sm:p-3.5">
+              <div className="mb-2.5 flex items-center justify-between font-display text-xs font-extrabold tracking-widest text-pink-300 uppercase italic">
+                <span>UNDERGLOW NEON KIT</span>
+                <button
+                  type="button"
+                  onClick={() => setDrawer(null)}
+                  className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] text-slate-300 sm:hidden"
+                >
+                  CLOSE
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {NEON_COLORS.map((nc) => {
@@ -422,11 +456,18 @@ export const GarageModal: React.FC<GarageModalProps> = ({
           )}
 
           {drawer === 'LIVERY' && (
-            <div className="panel-bevel w-72 rounded-2xl border border-white/20 p-3.5">
-              <div className="mb-2.5 font-display text-xs font-extrabold tracking-widest text-cyan-300 uppercase italic">
-                LEONIDA LIVERIES
+            <div className="panel-bevel w-64 rounded-2xl border border-white/20 p-3 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-36 max-sm:z-30 max-sm:w-auto sm:w-72 sm:p-3.5">
+              <div className="mb-2.5 flex items-center justify-between font-display text-xs font-extrabold tracking-widest text-cyan-300 uppercase italic">
+                <span>LEONIDA LIVERIES</span>
+                <button
+                  type="button"
+                  onClick={() => setDrawer(null)}
+                  className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] text-slate-300 sm:hidden"
+                >
+                  CLOSE
+                </button>
               </div>
-              <div className="frontier-scroll flex max-h-[340px] flex-col gap-2 overflow-y-auto pr-1">
+              <div className="frontier-scroll flex max-h-[240px] flex-col gap-2 overflow-y-auto pr-1 sm:max-h-[340px]">
                 {LIVERY_DEFS.map((lv) => {
                   const selected = activeLiveryId === lv.id;
                   const swatchBg =
@@ -470,9 +511,16 @@ export const GarageModal: React.FC<GarageModalProps> = ({
           )}
 
           {drawer === 'WHEELS' && (
-            <div className="panel-bevel w-64 rounded-2xl border border-white/20 p-3.5">
-              <div className="mb-2.5 font-display text-xs font-extrabold tracking-widest text-sky-300 uppercase italic">
-                WHEEL &amp; RIM STYLES
+            <div className="panel-bevel w-60 rounded-2xl border border-white/20 p-3 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-36 max-sm:z-30 max-sm:w-auto sm:w-64 sm:p-3.5">
+              <div className="mb-2.5 flex items-center justify-between font-display text-xs font-extrabold tracking-widest text-sky-300 uppercase italic">
+                <span>WHEEL &amp; RIM STYLES</span>
+                <button
+                  type="button"
+                  onClick={() => setDrawer(null)}
+                  className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] text-slate-300 sm:hidden"
+                >
+                  CLOSE
+                </button>
               </div>
               <div className="flex flex-col gap-2">
                 {WHEEL_STYLES.map((ws) => {
@@ -521,9 +569,16 @@ export const GarageModal: React.FC<GarageModalProps> = ({
           )}
 
           {drawer === 'PARTS' && (
-            <div className="panel-bevel w-68 rounded-2xl border border-white/20 p-3.5">
-              <div className="mb-2.5 font-display text-xs font-extrabold tracking-widest text-orange-300 uppercase italic">
-                3D TRAIL ACCESSORIES
+            <div className="panel-bevel w-64 rounded-2xl border border-white/20 p-3 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-36 max-sm:z-30 max-sm:w-auto sm:w-68 sm:p-3.5">
+              <div className="mb-2.5 flex items-center justify-between font-display text-xs font-extrabold tracking-widest text-orange-300 uppercase italic">
+                <span>3D TRAIL ACCESSORIES</span>
+                <button
+                  type="button"
+                  onClick={() => setDrawer(null)}
+                  className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] text-slate-300 sm:hidden"
+                >
+                  CLOSE
+                </button>
               </div>
               <div className="flex flex-col gap-2">
                 {ACCESSORY_DEFS.map((acc) => {

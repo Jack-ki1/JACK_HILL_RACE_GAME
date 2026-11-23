@@ -42,6 +42,7 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
   ({ muted, stageName, showHints, gamepadActive, onInputChange, onPause, onToggleMute }, ref) => {
     const distRef = useRef<HTMLSpanElement>(null);
     const bestRef = useRef<HTMLSpanElement>(null);
+    const rivalDeltaRef = useRef<HTMLSpanElement>(null);
     const fuelFillRef = useRef<HTMLDivElement>(null);
     const fuelTextRef = useRef<HTMLSpanElement>(null);
     const nextFuelRef = useRef<HTMLSpanElement>(null);
@@ -72,6 +73,22 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
         }
         if (bestRef.current) {
           bestRef.current.textContent = `BEST ${snap.bestMeters}m`;
+        }
+
+        if (rivalDeltaRef.current) {
+          if (snap.ghostDeltaMeters !== null) {
+            const rounded = Math.round(snap.ghostDeltaMeters);
+            const ahead = rounded >= 0;
+            rivalDeltaRef.current.style.display = 'inline-flex';
+            rivalDeltaRef.current.textContent = ahead
+              ? `RIVAL +${rounded}m`
+              : `RIVAL ${rounded}m`;
+            rivalDeltaRef.current.className = ahead
+              ? 'font-mono-num inline-flex items-center rounded border border-emerald-400/50 bg-emerald-950/90 px-2 py-0.5 text-[10px] font-extrabold text-emerald-300'
+              : 'font-mono-num inline-flex items-center rounded border border-amber-400/50 bg-amber-950/90 px-2 py-0.5 text-[10px] font-extrabold text-amber-300';
+          } else {
+            rivalDeltaRef.current.style.display = 'none';
+          }
         }
 
         if (runCoinsRef.current) {
@@ -195,34 +212,44 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
     });
 
     return (
-      <div className="touch-gameplay pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-3 sm:p-5">
-        {/* Top Row: Distance & Currencies | Fuel & Next Canister | Hazard + Pause */}
+      <div className="touch-gameplay safe-screen-pad pointer-events-none absolute inset-0 z-10 flex flex-col justify-between">
+        {/* Top Row: Left Fuel + Currencies | Center Distance + Stage + Rival | Right Mute + Pause */}
         <div className="flex items-start justify-between gap-2">
-          {/* Top-Left Telemetry & Currencies */}
-          <div className="flex flex-col gap-1.5">
-            <div className="panel-bevel flex items-center gap-3 rounded-xl border border-white/15 px-3 py-1.5">
-              <div>
-                <div className="flex items-baseline gap-2">
+          {/* Top-Left Fuel Gauge & Currencies */}
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <div
+              ref={fuelBoxRef}
+              className="panel-bevel flex items-center gap-2 rounded-xl border border-white/15 px-2.5 py-1.5 sm:px-3"
+            >
+              <FuelCanIcon className="h-4 w-4 shrink-0" />
+              <div className="flex flex-col">
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="h-2.5 w-16 overflow-hidden rounded-sm bg-slate-800 sm:w-28">
+                    <div
+                      ref={fuelFillRef}
+                      className="h-full transition-none"
+                      style={{ width: '100%', background: '#22c55e' }}
+                    />
+                  </div>
                   <span
-                    ref={distRef}
-                    className="font-display text-2xl leading-none font-extrabold tracking-wide text-white italic sm:text-3xl"
+                    ref={fuelTextRef}
+                    className="font-mono-num min-w-[36px] text-right text-[10px] font-bold text-white sm:text-[11px]"
                   >
-                    0m
+                    100%
                   </span>
                 </div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-bold tracking-widest text-slate-300 uppercase">
-                  <span>{stageName}</span>
-                  <span>·</span>
-                  <span ref={bestRef} className="font-mono-num text-amber-300">
-                    BEST 0m
-                  </span>
-                </div>
+                <span
+                  ref={nextFuelRef}
+                  className="font-mono-num mt-0.5 text-[9px] font-bold tracking-wider text-slate-400 sm:text-[10px]"
+                >
+                  FUEL IN --m
+                </span>
               </div>
             </div>
 
             <div className="flex items-center gap-1.5">
-              <div className="panel-bevel flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1">
-                <CoinIcon className="h-4 w-4" />
+              <div className="panel-bevel flex items-center gap-1 rounded-lg border border-white/15 px-2 py-1 sm:gap-1.5 sm:px-2.5">
+                <CoinIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 <span
                   ref={runCoinsRef}
                   className="font-mono-num text-xs font-extrabold text-white sm:text-sm"
@@ -230,7 +257,7 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
                   0
                 </span>
               </div>
-              <div className="panel-bevel flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1">
+              <div className="panel-bevel flex items-center gap-1 rounded-lg border border-white/15 px-2 py-1 sm:gap-1.5 sm:px-2.5">
                 <GemIcon className="h-3.5 w-3.5" />
                 <span
                   ref={gemsRef}
@@ -242,39 +269,26 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
             </div>
           </div>
 
-          {/* Top-Right Fuel Gauge + Next Fuel Canister + Mute/Pause */}
-          <div className="flex items-start gap-2">
-            <div className="flex flex-col items-end gap-1.5">
-              <div
-                ref={fuelBoxRef}
-                className="panel-bevel flex items-center gap-2 rounded-xl border border-white/15 px-3 py-1.5"
+          {/* Top-Center Distance, Stage & Rival Delta */}
+          <div className="flex flex-col items-center gap-1 text-center">
+            <div className="panel-bevel rounded-xl border border-white/15 px-3 py-1.5 sm:px-5">
+              <span
+                ref={distRef}
+                className="font-display block text-2xl leading-none font-extrabold tracking-wide text-white italic sm:text-3xl"
               >
-                <FuelCanIcon className="h-4 w-4 shrink-0" />
-                <div className="flex flex-col">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="h-2.5 w-24 overflow-hidden rounded-sm bg-slate-800 sm:w-32">
-                      <div
-                        ref={fuelFillRef}
-                        className="h-full transition-none"
-                        style={{ width: '100%', background: '#22c55e' }}
-                      />
-                    </div>
-                    <span
-                      ref={fuelTextRef}
-                      className="font-mono-num min-w-[42px] text-right text-[11px] font-bold text-white"
-                    >
-                      100%
-                    </span>
-                  </div>
-                  <span
-                    ref={nextFuelRef}
-                    className="font-mono-num mt-0.5 text-[10px] font-bold tracking-wider text-slate-400"
-                  >
-                    FUEL IN --m
-                  </span>
-                </div>
+                0m
+              </span>
+              <div className="mt-0.5 flex items-center justify-center gap-1.5 text-[9px] font-bold tracking-widest text-slate-300 uppercase sm:text-[10px]">
+                <span className="max-w-[90px] truncate sm:max-w-none">{stageName}</span>
+                <span>·</span>
+                <span ref={bestRef} className="font-mono-num text-amber-300 whitespace-nowrap">
+                  BEST 0m
+                </span>
               </div>
+            </div>
 
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
+              <span ref={rivalDeltaRef} style={{ display: 'none' }} />
               <div
                 ref={hazardRef}
                 style={{ display: 'none' }}
@@ -283,29 +297,30 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
                 CAVE TUNNEL
               </div>
             </div>
+          </div>
 
-            <div className="pointer-events-auto flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={onToggleMute}
-                aria-label={muted ? 'Unmute audio' : 'Mute audio'}
-                className="panel-bevel flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 text-white transition hover:border-white/40"
-              >
-                {muted ? (
-                  <VolumeX className="h-4 w-4 text-rose-400" />
-                ) : (
-                  <Volume2 className="h-4 w-4 text-emerald-400" />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={onPause}
-                aria-label="Pause Game"
-                className="panel-bevel flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 text-white transition hover:border-amber-400/70"
-              >
-                <Pause className="h-5 w-5 fill-current" />
-              </button>
-            </div>
+          {/* Top-Right Touch-Friendly Mute & Pause */}
+          <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onToggleMute}
+              aria-label={muted ? 'Unmute audio' : 'Mute audio'}
+              className="panel-bevel flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 text-white transition hover:border-white/40"
+            >
+              {muted ? (
+                <VolumeX className="h-5 w-5 text-rose-400" />
+              ) : (
+                <Volume2 className="h-5 w-5 text-emerald-400" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onPause}
+              aria-label="Pause Game"
+              className="panel-bevel flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 text-white transition hover:border-amber-400/70"
+            >
+              <Pause className="h-5 w-5 fill-current" />
+            </button>
           </div>
         </div>
 
@@ -332,25 +347,25 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
         </div>
 
         {/* Bottom Row: Brake Pedal | 3-Dial Motorsport Cluster | Nitro + Gas Pedal */}
-        <div className="flex items-end justify-between gap-2">
+        <div className="flex items-end justify-between gap-1.5 sm:gap-3">
           {/* Left Brake Pedal */}
           <button
             ref={brakeBtnRef}
             type="button"
             {...bindPedal('brake', brakeBtnRef)}
             aria-label="Brake"
-            className="pedal-metal pointer-events-auto flex h-24 w-20 flex-col items-center justify-end rounded-xl border-2 border-slate-500 pb-2 shadow-[0_8px_0_#334155,0_14px_24px_rgba(0,0,0,0.55)] transition-transform sm:h-28 sm:w-24"
+            className="pedal-metal compact-hud-pedal pointer-events-auto flex h-20 w-16 shrink-0 flex-col items-center justify-end rounded-xl border-2 border-slate-500 pb-2 shadow-[0_6px_0_#334155,0_12px_20px_rgba(0,0,0,0.55)] transition-transform sm:h-28 sm:w-24 sm:shadow-[0_8px_0_#334155,0_14px_24px_rgba(0,0,0,0.55)]"
           >
-            <span className="font-display rounded bg-slate-900/90 px-2 py-0.5 text-xs font-extrabold tracking-widest text-white italic">
+            <span className="font-display rounded bg-slate-900/90 px-1.5 py-0.5 text-[10px] font-extrabold tracking-widest text-white italic sm:px-2 sm:text-xs">
               BRAKE
             </span>
           </button>
 
           {/* Center 3-Dial Motorsport Instrument Cluster */}
-          <div className="flex flex-col items-center gap-1">
-            <div className="flex items-end gap-1.5 sm:gap-3">
+          <div className="flex min-w-0 flex-col items-center gap-1">
+            <div className="flex items-end gap-1 sm:gap-3">
               {/* RPM Gauge with radial tick marks */}
-              <div className="hud-dial relative h-20 w-20 rounded-full border-2 border-slate-500 p-1 sm:h-24 sm:w-24">
+              <div className="hud-dial compact-hud-dial-sm relative h-14 w-14 shrink-0 rounded-full border-2 border-slate-500 p-0.5 sm:h-24 sm:w-24 sm:p-1">
                 <svg viewBox="0 0 100 100" className="h-full w-full">
                   <circle
                     cx="50"
@@ -418,29 +433,29 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
                     <circle cx="50" cy="50" r="5" fill="#e2e8f0" />
                   </g>
                 </svg>
-                <span className="font-display absolute inset-x-0 bottom-2 text-center text-[10px] font-extrabold tracking-widest text-slate-300 italic">
+                <span className="font-display absolute inset-x-0 bottom-1 text-center text-[8px] font-extrabold tracking-widest text-slate-300 italic sm:bottom-2 sm:text-[10px]">
                   RPM
                 </span>
               </div>
 
               {/* Center KM/H + Gear + Mini Fuel Gauge */}
-              <div className="hud-dial relative flex h-24 w-24 flex-col items-center justify-center rounded-full border-2 border-slate-400 sm:h-28 sm:w-28">
+              <div className="hud-dial compact-hud-dial-lg relative flex h-17 w-17 shrink-0 flex-col items-center justify-center rounded-full border-2 border-slate-400 sm:h-28 sm:w-28">
                 <span
                   ref={gearRef}
-                  className="font-mono-num text-[10px] font-extrabold tracking-widest text-amber-400"
+                  className="font-mono-num text-[9px] font-extrabold tracking-widest text-amber-400 sm:text-[10px]"
                 >
                   G1
                 </span>
                 <span
                   ref={speedRef}
-                  className="font-mono-num text-3xl leading-none font-black text-white sm:text-4xl"
+                  className="font-mono-num compact-hud-speed text-xl leading-none font-black text-white sm:text-4xl"
                 >
                   0
                 </span>
-                <span className="font-display text-[10px] font-bold tracking-widest text-slate-400 italic">
+                <span className="font-display text-[8px] font-bold tracking-widest text-slate-400 italic sm:text-[10px]">
                   KM/H
                 </span>
-                <div className="mt-1.5 flex items-center gap-1">
+                <div className="mt-0.5 hidden items-center gap-1 sm:mt-1.5 sm:flex">
                   <span className="text-[8px] font-bold text-rose-400">E</span>
                   <div className="h-1.5 w-10 overflow-hidden rounded-full bg-slate-800">
                     <div
@@ -454,7 +469,7 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
               </div>
 
               {/* Boost Pressure Gauge with radial tick marks */}
-              <div className="hud-dial relative h-20 w-20 rounded-full border-2 border-slate-500 p-1 sm:h-24 sm:w-24">
+              <div className="hud-dial compact-hud-dial-sm relative h-14 w-14 shrink-0 rounded-full border-2 border-slate-500 p-0.5 sm:h-24 sm:w-24 sm:p-1">
                 <svg viewBox="0 0 100 100" className="h-full w-full">
                   <circle
                     cx="50"
@@ -508,14 +523,14 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
                     <circle cx="50" cy="50" r="5" fill="#e2e8f0" />
                   </g>
                 </svg>
-                <span className="font-display absolute inset-x-0 bottom-2 text-center text-[10px] font-extrabold tracking-widest text-sky-300 italic">
+                <span className="font-display absolute inset-x-0 bottom-1 text-center text-[8px] font-extrabold tracking-widest text-sky-300 italic sm:bottom-2 sm:text-[10px]">
                   BOOST
                 </span>
               </div>
             </div>
 
             {showHints && (
-              <div className="panel-bevel hidden items-center gap-2 rounded-md border border-white/10 px-2.5 py-0.5 text-[10px] font-medium tracking-wide text-slate-300 sm:flex">
+              <div className="panel-bevel hidden items-center gap-2 rounded-md border border-white/10 px-2.5 py-0.5 text-[10px] font-medium tracking-wide text-slate-300 md:flex">
                 <span>A/D or ←/→ Drive · Shift Nitro · Space Handbrake · P Pause</span>
                 {gamepadActive && (
                   <span className="inline-flex items-center gap-1 rounded bg-violet-500/25 px-1.5 py-0.2 text-violet-200">
@@ -527,8 +542,8 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
             )}
           </div>
 
-          {/* Right Gas + Nitro Controls */}
-          <div className="pointer-events-auto flex items-end gap-2">
+          {/* Right Gas + Nitro Controls (stacked cleanly on mobile portrait, side-by-side on wider viewports) */}
+          <div className="pointer-events-auto flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-end sm:gap-2">
             <button
               ref={nitroBtnRef}
               type="button"
@@ -543,13 +558,13 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
               }}
               onPointerCancel={() => onInputChange({ nitro: false, gas: false })}
               aria-label="Nitro Boost"
-              className="touch-gameplay panel-bevel flex h-16 w-16 flex-col items-center justify-center gap-1 rounded-xl border border-sky-400/60 text-sky-300 transition hover:border-sky-300 active:scale-95 sm:h-20 sm:w-20"
+              className="touch-gameplay panel-bevel compact-hud-nitro flex h-13 w-16 flex-col items-center justify-center gap-0.5 rounded-xl border border-sky-400/60 text-sky-300 transition hover:border-sky-300 active:scale-95 sm:h-20 sm:w-20 sm:gap-1"
             >
-              <Flame className="h-5 w-5 text-sky-400" />
-              <span className="font-display text-[10px] font-extrabold tracking-widest italic">
+              <Flame className="h-4 w-4 text-sky-400 sm:h-5 sm:w-5" />
+              <span className="font-display text-[9px] font-extrabold tracking-widest italic sm:text-[10px]">
                 NITRO
               </span>
-              <div className="h-1.5 w-11 overflow-hidden rounded-full bg-slate-800">
+              <div className="h-1 w-10 overflow-hidden rounded-full bg-slate-800 sm:h-1.5 sm:w-11">
                 <div
                   ref={nitroFillRef}
                   className="h-full bg-sky-400"
@@ -563,9 +578,9 @@ export const GameplayHud = forwardRef<GameplayHudHandle, GameplayHudProps>(
               type="button"
               {...bindPedal('gas', gasBtnRef)}
               aria-label="Gas"
-              className="pedal-metal flex h-24 w-20 flex-col items-center justify-end rounded-xl border-2 border-slate-500 pb-2 shadow-[0_8px_0_#334155,0_14px_24px_rgba(0,0,0,0.55)] transition-transform sm:h-28 sm:w-24"
+              className="pedal-metal compact-hud-pedal flex h-20 w-16 flex-col items-center justify-end rounded-xl border-2 border-slate-500 pb-2 shadow-[0_6px_0_#334155,0_12px_20px_rgba(0,0,0,0.55)] transition-transform sm:h-28 sm:w-24 sm:shadow-[0_8px_0_#334155,0_14px_24px_rgba(0,0,0,0.55)]"
             >
-              <span className="font-display rounded bg-slate-900/90 px-2.5 py-0.5 text-xs font-extrabold tracking-widest text-white italic">
+              <span className="font-display rounded bg-slate-900/90 px-2 py-0.5 text-[10px] font-extrabold tracking-widest text-white italic sm:px-2.5 sm:text-xs">
                 GAS
               </span>
             </button>

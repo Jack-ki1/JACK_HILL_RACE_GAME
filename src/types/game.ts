@@ -183,6 +183,15 @@ export interface UpgradeLevels {
   fuel: number;
 }
 
+export interface DailyChallengeState {
+  dateKey: string;
+  bestMeters: number;
+  targetMeters: number;
+  rewardCoins: number;
+  rewardGems: number;
+  claimed: boolean;
+}
+
 export interface SaveData {
   coins: number;
   gems: number;
@@ -208,6 +217,7 @@ export interface SaveData {
     coinMagnet: number;
   };
   claimedRewards: Record<string, boolean>;
+  dailyChallenge: DailyChallengeState;
   totals: {
     distanceMeters: number;
     coinsCollected: number;

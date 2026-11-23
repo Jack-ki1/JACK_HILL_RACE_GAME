@@ -140,9 +140,6 @@ export class HillClimbPhysics {
     this.hasSnorkel = Boolean(
       save.vehicleAccessories?.[vehicle.id]?.includes('snorkel'),
     );
-    if (this.hasSnorkel) {
-      // Raised ram-air snorkel improves high-RPM desert/trail breathing slightly
-    }
 
     this.recomputeParams();
     this.state = this.createInitialState();
@@ -153,6 +150,8 @@ export class HillClimbPhysics {
     const t = this.save.tuning;
     const v = this.vehicle;
     const s = this.stage;
+    const snorkelPowerMult = this.hasSnorkel ? 1.04 : 1.0;
+    const snorkelSpeedMult = this.hasSnorkel ? 1.03 : 1.0;
 
     this.mass = 1.0;
     this.inertia =
@@ -166,8 +165,12 @@ export class HillClimbPhysics {
               ? 1.78
               : 1.65;
     this.engineTorque =
-      23.5 * v.powerMult * (1 + 0.08 * u.engine) * t.enginePower;
-    this.topSpeed = v.topSpeedMs * (1 + 0.045 * u.engine) * (0.85 + 0.15 * t.enginePower);
+      23.5 * v.powerMult * (1 + 0.08 * u.engine) * t.enginePower * snorkelPowerMult;
+    this.topSpeed =
+      v.topSpeedMs *
+      (1 + 0.045 * u.engine) *
+      (0.85 + 0.15 * t.enginePower) *
+      snorkelSpeedMult;
 
     this.springK = 54.0 * v.springMult * (1 + 0.07 * u.suspension) * t.suspensionStiffness;
     this.dampComp = 7.4 * (1 + 0.06 * u.suspension) * t.damping;

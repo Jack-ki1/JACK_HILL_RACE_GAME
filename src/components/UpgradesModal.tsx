@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Check, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Check, ShieldCheck, Sliders } from 'lucide-react';
 import {
   getUpgradeCost,
   MAX_UPGRADE_LEVEL,
@@ -13,6 +13,7 @@ interface UpgradesModalProps {
   vehicle: VehicleConfig;
   onClose: () => void;
   onBuyUpgrade: (vehicleId: VehicleId, key: UpgradeKey) => void;
+  onOpenTuning?: () => void;
 }
 
 const NODE_STEPS = Array.from({ length: MAX_UPGRADE_LEVEL }, (_, i) => i + 1);
@@ -22,6 +23,7 @@ export const UpgradesModal: React.FC<UpgradesModalProps> = ({
   vehicle,
   onClose,
   onBuyUpgrade,
+  onOpenTuning,
 }) => {
   const levels = save.upgrades[vehicle.id];
   const totalLevel =
@@ -55,7 +57,17 @@ export const UpgradesModal: React.FC<UpgradesModalProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenTuning && (
+            <button
+              type="button"
+              onClick={onOpenTuning}
+              className="panel-bevel flex items-center gap-1.5 rounded-lg border border-violet-400/50 px-3 py-1.5 font-display text-xs font-extrabold tracking-wider text-violet-200 uppercase italic transition hover:border-violet-300"
+            >
+              <Sliders className="h-4 w-4 text-violet-300" />
+              PRO TUNING BENCH
+            </button>
+          )}
           <div className="panel-bevel flex items-center gap-2 rounded-lg border border-white/15 px-3 py-1.5">
             <CoinIcon className="h-5 w-5" />
             <span className="font-mono-num text-sm font-bold">

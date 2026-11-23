@@ -1,4 +1,5 @@
 import {
+  DailyChallengeState,
   GameSettings,
   LiveryConfig,
   NeonColorConfig,
@@ -426,7 +427,7 @@ export const ACCESSORY_DEFS: AccessoryDef[] = [
   { id: 'lightbar', name: 'Roof LED Rack', desc: 'High-lumen trail lightbar array', price: 0 },
   { id: 'bullbar', name: 'Steel Bull Bar', desc: 'Armored front winch & brush guard', price: 450 },
   { id: 'whip_flag', name: 'Rally Whip Flag', desc: 'Flexible dune whip & crimson pennant', price: 300 },
-  { id: 'snorkel', name: 'Trail Snorkel', desc: 'Raised A-pillar dust & desert ram-air intake', price: 600 },
+  { id: 'snorkel', name: 'Ram-Air Snorkel', desc: 'Raised intake (+4% torque, +3% top speed)', price: 600 },
 ];
 
 export interface UpgradeDefinition {
@@ -544,6 +545,27 @@ export const SEASON_TIERS = [
   { tier: 6, targetMeters: 12000, rewardLabel: 'Season Champion', rewardCoins: 5000, rewardGems: 75 },
 ];
 
+export function getLocalDateKey(now = Date.now()): string {
+  const d = new Date(now);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function createDailyChallenge(now = Date.now()): DailyChallengeState {
+  const d = new Date(now);
+  const dayIdx = d.getDate() % 5;
+  return {
+    dateKey: getLocalDateKey(now),
+    bestMeters: 0,
+    targetMeters: 800 + dayIdx * 150,
+    rewardCoins: 750 + dayIdx * 150,
+    rewardGems: 15 + (dayIdx % 3) * 5,
+    claimed: false,
+  };
+}
+
 export function createDefaultSave(): SaveData {
   return {
     coins: 1200,
@@ -648,6 +670,7 @@ export function createDefaultSave(): SaveData {
       coinMagnet: 0,
     },
     claimedRewards: {},
+    dailyChallenge: createDailyChallenge(),
     totals: {
       distanceMeters: 0,
       coinsCollected: 0,

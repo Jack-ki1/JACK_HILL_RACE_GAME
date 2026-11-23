@@ -1,6 +1,8 @@
 import {
+  createDailyChallenge,
   createDefaultSave,
   FREE_GEMS_COOLDOWN_MS,
+  getLocalDateKey,
   MAX_TICKETS,
   MISSIONS,
   SEASON_TIERS,
@@ -29,6 +31,17 @@ export function regenTickets(save: SaveData, now = Date.now()): SaveData {
     ...save,
     tickets: nextTickets,
     ticketTimestamp: now - remainderMs,
+  };
+}
+
+export function refreshDailyChallenge(save: SaveData, now = Date.now()): SaveData {
+  const today = getLocalDateKey(now);
+  if (save.dailyChallenge && save.dailyChallenge.dateKey === today) {
+    return save;
+  }
+  return {
+    ...save,
+    dailyChallenge: createDailyChallenge(now),
   };
 }
 
@@ -86,13 +99,17 @@ export function loadSaveData(): SaveData {
       },
       boosters: { ...base.boosters, ...(parsed.boosters ?? {}) },
       claimedRewards: { ...(parsed.claimedRewards ?? {}) },
+      dailyChallenge:
+        parsed.dailyChallenge && parsed.dailyChallenge.dateKey === getLocalDateKey()
+          ? { ...createDailyChallenge(), ...parsed.dailyChallenge }
+          : createDailyChallenge(),
       totals: { ...base.totals, ...(parsed.totals ?? {}) },
       tuning: { ...base.tuning, ...(parsed.tuning ?? {}) },
       settings: { ...base.settings, ...(parsed.settings ?? {}) },
       tutorialSeen: parsed.tutorialSeen ?? base.tutorialSeen,
     };
 
-    return regenTickets(merged);
+    return refreshDailyChallenge(regenTickets(merged));
   } catch {
     return base;
   }

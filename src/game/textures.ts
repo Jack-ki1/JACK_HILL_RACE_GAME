@@ -103,13 +103,15 @@ export function createTerrainStrataTexture(
     ctx.fill();
   }
 
-  // Sharp overhanging turf / snow lip shadow
-  const lipGrad = ctx.createLinearGradient(0, 0, 0, 34);
+  // Sharp overhanging turf / snow lip shadow for high-contrast side-profile separation
+  const lipGrad = ctx.createLinearGradient(0, 0, 0, 42);
   lipGrad.addColorStop(0, topColor);
-  lipGrad.addColorStop(0.42, 'rgba(0,0,0,0.38)');
+  lipGrad.addColorStop(0.28, topColor);
+  lipGrad.addColorStop(0.36, 'rgba(0,0,0,0.52)');
+  lipGrad.addColorStop(0.68, 'rgba(0,0,0,0.18)');
   lipGrad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = lipGrad;
-  ctx.fillRect(0, 0, 512, 34);
+  ctx.fillRect(0, 0, 512, 42);
 
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;

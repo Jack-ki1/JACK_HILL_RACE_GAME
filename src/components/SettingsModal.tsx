@@ -278,8 +278,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           {/* Feature Toggles */}
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {[
+              {
+                key: 'showGhost' as const,
+                label: 'GHOST RIVAL',
+                value: settings.showGhost,
+              },
               {
                 key: 'showControlHints' as const,
                 label: 'HUD HINTS',
@@ -342,7 +347,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <li><strong className="text-white">Left Pedal</strong> Hold Brake / Nose-Down</li>
                 <li><strong className="text-white">Right Pedal</strong> Hold Gas / Back-Pitch</li>
                 <li><strong className="text-white">Nitro Button</strong> Auto-throttles with Boost</li>
-                <li>Landscape orientation recommended on phones</li>
+                <li>Dual-pedal touch layout adapts to portrait &amp; landscape</li>
               </ul>
             </div>
 

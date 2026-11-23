@@ -4,10 +4,7 @@ import { GameOverModal, PauseModal } from './components/PauseAndGameOverModal';
 import { GameplayHud, GameplayHudHandle } from './components/GameplayHud';
 import { GarageModal } from './components/GarageModal';
 import { MissionsModal } from './components/MissionsModal';
-import {
-  FirstRunTutorialOverlay,
-  PortraitOrientationBanner,
-} from './components/OnboardingAndOrientation';
+import { FirstRunTutorialOverlay } from './components/OnboardingAndOrientation';
 import { SettingsModal } from './components/SettingsModal';
 import { ShopActionResult, ShopModal } from './components/ShopModal';
 import { TitleOverlay } from './components/TitleOverlay';
@@ -30,6 +27,7 @@ import {
   isStageUnlocked,
   loadSaveData,
   persistSaveData,
+  refreshDailyChallenge,
   regenTickets,
   resetSaveData,
 } from './game/storage';
@@ -65,13 +63,6 @@ export default function App() {
   const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
   const [contextLost, setContextLost] = useState(false);
   const [gamepadActive, setGamepadActive] = useState(false);
-  const [isPortrait, setIsPortrait] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      window.innerHeight > window.innerWidth &&
-      window.innerWidth < 820,
-  );
-  const [portraitDismissed, setPortraitDismissed] = useState(false);
 
   const saveRef = useRef(save);
   const screenRef = useRef(screen);
@@ -150,7 +141,7 @@ export default function App() {
             distanceMeters: dist,
             bestMeters: Math.floor(curSave.stageBests[curSave.selectedStage] ?? 0),
             nextFuelMeters: physics.getNextFuelDistanceMeters(),
-            ghostDeltaMeters: null,
+            ghostDeltaMeters: worldRef.current?.getGhostDeltaMeters() ?? null,
             fuelPct: s.fuel,
             runCoins: s.runCoins,
             totalCoins: curSave.coins,
@@ -320,25 +311,39 @@ export default function App() {
         const prevBest = Math.floor(saveRef.current.stageBests[stage.id] ?? 0);
         const isNewBest = distMeters > prevBest;
         const nextBest = Math.max(prevBest, distMeters);
+        const recordedGhost = worldRef.current?.getRecordedGhost() ?? [];
 
-        setSave((prev) => ({
-          ...prev,
-          coins: prev.coins + coinsEarned,
-          stageBests: {
-            ...prev.stageBests,
-            [stage.id]: Math.max(prev.stageBests[stage.id] ?? 0, distMeters),
-          },
-          totals: {
-            distanceMeters: prev.totals.distanceMeters + distMeters,
-            coinsCollected: prev.totals.coinsCollected + coinsEarned,
-            flipsCompleted: prev.totals.flipsCompleted + s.flips,
-            bestSingleRunMeters: Math.max(
-              prev.totals.bestSingleRunMeters,
-              distMeters,
-            ),
-            runsCompleted: prev.totals.runsCompleted + 1,
-          },
-        }));
+        setSave((prev) => {
+          const refreshed = refreshDailyChallenge(prev);
+          const nextGhostMap =
+            isNewBest && recordedGhost.length >= 2
+              ? { ...refreshed.stageGhosts, [stage.id]: recordedGhost }
+              : refreshed.stageGhosts;
+
+          return {
+            ...refreshed,
+            coins: refreshed.coins + coinsEarned,
+            stageBests: {
+              ...refreshed.stageBests,
+              [stage.id]: Math.max(refreshed.stageBests[stage.id] ?? 0, distMeters),
+            },
+            stageGhosts: nextGhostMap,
+            dailyChallenge: {
+              ...refreshed.dailyChallenge,
+              bestMeters: Math.max(refreshed.dailyChallenge.bestMeters, distMeters),
+            },
+            totals: {
+              distanceMeters: refreshed.totals.distanceMeters + distMeters,
+              coinsCollected: refreshed.totals.coinsCollected + coinsEarned,
+              flipsCompleted: refreshed.totals.flipsCompleted + s.flips,
+              bestSingleRunMeters: Math.max(
+                refreshed.totals.bestSingleRunMeters,
+                distMeters,
+              ),
+              runsCompleted: refreshed.totals.runsCompleted + 1,
+            },
+          };
+        });
 
         crashTimeoutRef.current = window.setTimeout(() => {
           worldRef.current?.setMode('GAME_OVER');
@@ -471,7 +476,7 @@ export default function App() {
       }
     };
 
-    const onBlur = () => {
+    const clearInputs = () => {
       worldRef.current?.setInput({
         gas: false,
         brake: false,
@@ -480,33 +485,35 @@ export default function App() {
       });
     };
 
+    const onVisibilityChange = () => {
+      if (document.hidden) clearInputs();
+    };
+
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', onBlur);
+    window.addEventListener('blur', clearInputs);
+    window.addEventListener('orientationchange', clearInputs);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('blur', clearInputs);
+      window.removeEventListener('orientationchange', clearInputs);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [pauseRace, resumeRace, returnScreen, startRace, toggleMute]);
 
-  // Portrait viewport check for mobile gameplay hint
+  // Ensure held inputs clear whenever navigating away from active PLAYING mode
   useEffect(() => {
-    const checkOrientation = () => {
-      const portrait =
-        window.innerHeight > window.innerWidth && window.innerWidth < 820;
-      setIsPortrait(portrait);
-      if (!portrait) {
-        setPortraitDismissed(false);
-      }
-    };
-    window.addEventListener('resize', checkOrientation);
-    window.addEventListener('orientationchange', checkOrientation);
-    return () => {
-      window.removeEventListener('resize', checkOrientation);
-      window.removeEventListener('orientationchange', checkOrientation);
-    };
-  }, []);
+    if (screen !== 'PLAYING') {
+      worldRef.current?.setInput({
+        gas: false,
+        brake: false,
+        nitro: false,
+        handbrake: false,
+      });
+    }
+  }, [screen]);
 
   // Standard Gamepad polling (RT/LT/A/X/RB/B/Y/Start) without overriding keyboard/touch
   useEffect(() => {
@@ -928,6 +935,23 @@ export default function App() {
     });
   };
 
+  const handleClaimDailyChallenge = () => {
+    updateSave((prev) => {
+      const refreshed = refreshDailyChallenge(prev);
+      const daily = refreshed.dailyChallenge;
+      if (daily.claimed || daily.bestMeters < daily.targetMeters) {
+        return refreshed;
+      }
+      soundRef.current?.playStunt();
+      return {
+        ...refreshed,
+        coins: refreshed.coins + daily.rewardCoins,
+        gems: refreshed.gems + daily.rewardGems,
+        dailyChallenge: { ...daily, claimed: true },
+      };
+    });
+  };
+
   const handleUpdateTuning = (next: TuningConfig) => {
     updateSave((prev) => ({ ...prev, tuning: next }));
     worldRef.current?.getPhysics()?.recomputeParams();
@@ -983,6 +1007,7 @@ export default function App() {
             onOpenScreen={(s, mTab) => openModalFrom(s, 'TITLE_MENU', mTab)}
             onSelectVehicle={handleTitleVehicleSelect}
             onToggleMute={toggleMute}
+            onClaimDailyChallenge={handleClaimDailyChallenge}
           />
         )}
 
@@ -1008,11 +1033,6 @@ export default function App() {
             onPause={pauseRace}
             onToggleMute={toggleMute}
           />
-        )}
-
-        {/* Non-blocking Portrait Orientation Tip */}
-        {screen === 'PLAYING' && isPortrait && !portraitDismissed && (
-          <PortraitOrientationBanner onDismiss={() => setPortraitDismissed(true)} />
         )}
 
         {/* Pause Modal */}
@@ -1070,6 +1090,7 @@ export default function App() {
               setScreen(returnScreen);
             }}
             onBuyUpgrade={handleBuyUpgrade}
+            onOpenTuning={() => openModalFrom('TUNING', returnScreen)}
           />
         )}
 

@@ -11,7 +11,9 @@ import {
 import {
   buildCoin3D,
   buildFuelCan3D,
+  buildGhostVehicle3D,
   buildVehicle3D,
+  GhostRig3D,
   VehicleRig3D,
 } from './models';
 import { HillClimbPhysics, ParticleBurst } from './physics';
@@ -94,11 +96,40 @@ export function detectSoftwareWebGL(): boolean {
   }
 }
 
+export function interpolateGhostSample(
+  track: GhostSample[],
+  elapsedSec: number,
+): GhostSample | null {
+  if (track.length === 0) return null;
+  if (elapsedSec <= track[0].t) return track[0];
+  const last = track[track.length - 1];
+  if (elapsedSec >= last.t) return last;
+
+  let lo = 0;
+  let hi = track.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (track[mid].t <= elapsedSec) lo = mid;
+    else hi = mid;
+  }
+  const a = track[lo];
+  const b = track[hi];
+  const span = Math.max(0.0001, b.t - a.t);
+  const alpha = Math.max(0, Math.min(1, (elapsedSec - a.t) / span));
+  const da = Math.atan2(Math.sin(b.a - a.a), Math.cos(b.a - a.a));
+  return {
+    t: elapsedSec,
+    x: a.x + (b.x - a.x) * alpha,
+    y: a.y + (b.y - a.y) * alpha,
+    a: a.a + da * alpha,
+  };
+}
+
 export class WorldSceneController {
   private container: HTMLElement;
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
-  private camera: THREE.PerspectiveCamera;
+  private camera: THREE.OrthographicCamera;
   private isSoftwareGl: boolean;
   private maxAniso: number;
   private frameId = 0;
@@ -162,8 +193,14 @@ export class WorldSceneController {
   private ambientSnowMesh: THREE.Points;
   private ambientSnowPos: Float32Array;
 
-  // Vehicle & Physics
+  // Vehicle, Ghost Rival & Physics
   private vehicleRig: VehicleRig3D | null = null;
+  private ghostRig: GhostRig3D | null = null;
+  private activeGhostTrack: GhostSample[] = [];
+  private recordedGhost: GhostSample[] = [];
+  private runElapsedSec = 0;
+  private ghostSampleAccum = 0;
+  private showGhost = true;
   private activeStage: StageConfig = STAGES[0];
   private activeVehicle: VehicleConfig = VEHICLES[0];
   private activePaintId = 'frontier_red';
@@ -178,11 +215,11 @@ export class WorldSceneController {
   private input: InputState = { gas: false, brake: false, nitro: false, handbrake: false };
   private mode: WorldMode = 'TITLE';
 
-  // Camera smoothing
+  // Orthographic Camera framing
   private camX = START_X + 2;
   private camY = 3;
-  private camZ = 15.5;
   private camZoom = 1.0;
+  private dynamicOrthoScale = 1.0;
   private shakeScale = 1.0;
   private contactShadowMesh: THREE.Mesh;
 
@@ -236,8 +273,10 @@ export class WorldSceneController {
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
 
-    this.camera = new THREE.PerspectiveCamera(44, w / h, 0.5, 340);
-    this.camera.position.set(this.camX, this.camY, this.camZ);
+    this.camera = new THREE.OrthographicCamera(-12, 12, 7.5, -7.5, 0.5, 340);
+    this.camera.position.set(this.camX, this.camY, 45);
+    this.camera.lookAt(this.camX, this.camY, 0);
+    this.updateOrthoFrustum();
 
     // 3-Point Natural Outdoor Lighting Rig
     this.hemiLight = new THREE.HemisphereLight('#8fd2ff', '#4a5a2b', 1.05);
@@ -271,7 +310,7 @@ export class WorldSceneController {
       sunGlowColor: { value: new THREE.Color('#ffe8b5') },
     };
     this.skyMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(520, 240),
+      new THREE.PlaneGeometry(520, 320),
       new THREE.ShaderMaterial({
         uniforms: this.skyUniforms,
         depthWrite: false,
@@ -299,7 +338,7 @@ export class WorldSceneController {
         `,
       }),
     );
-    this.skyMesh.position.set(0, 26, -145);
+    this.skyMesh.position.set(0, 10, -145);
     this.scene.add(this.skyMesh);
 
     // Sun / Moon Disc + Halo
@@ -321,7 +360,7 @@ export class WorldSceneController {
     this.scene.add(this.contactShadowMesh);
 
     this.sunDisc = new THREE.Mesh(
-      new THREE.PlaneGeometry(46, 46),
+      new THREE.PlaneGeometry(14, 14),
       new THREE.MeshBasicMaterial({
         map: this.glowTex,
         color: '#fff4c8',
@@ -331,13 +370,13 @@ export class WorldSceneController {
         fog: false,
       }),
     );
-    this.sunDisc.position.set(42, 34, -125);
+    this.sunDisc.position.set(10, 5.2, -125);
     this.scene.add(this.sunDisc);
 
     // Earth Disc visible in Moon Crater black sky
     this.earthTex = createEarthTexture(this.maxAniso);
     this.earthDisc = new THREE.Mesh(
-      new THREE.PlaneGeometry(16, 16),
+      new THREE.PlaneGeometry(5.5, 5.5),
       new THREE.MeshBasicMaterial({
         map: this.earthTex,
         transparent: true,
@@ -345,16 +384,16 @@ export class WorldSceneController {
         fog: false,
       }),
     );
-    this.earthDisc.position.set(-28, 28, -120);
+    this.earthDisc.position.set(-7.5, 4.8, -120);
     this.earthDisc.visible = false;
     this.scene.add(this.earthDisc);
 
-    // Twinkling Starfield
-    const starCount = 320;
+    // Twinkling Starfield (scaled for orthographic viewport bounds)
+    const starCount = 260;
     const starPositions = new Float32Array(starCount * 3);
     for (let i = 0; i < starCount; i++) {
-      starPositions[i * 3] = (hash01(i * 3 + 1) - 0.5) * 360;
-      starPositions[i * 3 + 1] = 8 + hash01(i * 3 + 2) * 92;
+      starPositions[i * 3] = (hash01(i * 3 + 1) - 0.5) * 72;
+      starPositions[i * 3 + 1] = -8 + hash01(i * 3 + 2) * 32;
       starPositions[i * 3 + 2] = -130;
     }
     const starGeo = new THREE.BufferGeometry();
@@ -363,8 +402,8 @@ export class WorldSceneController {
       starGeo,
       new THREE.PointsMaterial({
         color: '#ffffff',
-        size: 0.95,
-        sizeAttenuation: true,
+        size: 3.2,
+        sizeAttenuation: false,
         transparent: true,
         opacity: 0.9,
         fog: false,
@@ -376,7 +415,7 @@ export class WorldSceneController {
     // Aurora Borealis Ribbons
     this.auroraGroup = new THREE.Group();
     for (let b = 0; b < 2; b++) {
-      const aGeo = new THREE.PlaneGeometry(250, 28, 48, 4);
+      const aGeo = new THREE.PlaneGeometry(80, 9, 48, 4);
       const aMat = new THREE.MeshBasicMaterial({
         color: b === 0 ? '#34d399' : '#818cf8',
         transparent: true,
@@ -387,14 +426,14 @@ export class WorldSceneController {
         fog: false,
       });
       const band = new THREE.Mesh(aGeo, aMat);
-      band.position.set(0, 32 + b * 8, -110 - b * 6);
+      band.position.set(0, 5.5 + b * 2.4, -110 - b * 6);
       this.auroraBands.push(band);
       this.auroraGroup.add(band);
     }
     this.auroraGroup.visible = false;
     this.scene.add(this.auroraGroup);
 
-    // Layered 3D Clouds
+    // Layered 3D Clouds (ortho-proportioned)
     this.cloudGroup = new THREE.Group();
     const cloudMat = new THREE.MeshStandardMaterial({
       color: '#ffffff',
@@ -407,11 +446,11 @@ export class WorldSceneController {
     for (let c = 0; c < 12; c++) {
       const cluster = new THREE.Group();
       const puffs = [
-        [0, 0, 0, 3.4],
-        [2.8, -0.4, 0.2, 2.5],
-        [-2.7, -0.5, -0.1, 2.4],
-        [0.9, 1.2, 0, 2.2],
-        [-1.1, 0.9, 0.1, 1.9],
+        [0, 0, 0, 1.35],
+        [1.1, -0.15, 0.1, 1.0],
+        [-1.05, -0.2, -0.1, 0.95],
+        [0.35, 0.48, 0, 0.9],
+        [-0.45, 0.36, 0.1, 0.78],
       ];
       puffs.forEach(([px, py, pz, r]) => {
         const m = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), cloudMat);
@@ -419,33 +458,33 @@ export class WorldSceneController {
         m.position.set(px, py, pz);
         cluster.add(m);
       });
-      cluster.position.set(-100 + c * 26, 20 + (c % 4) * 5.5, -80 - (c % 3) * 14);
+      cluster.position.set(-48 + c * 11, 4.2 + (c % 4) * 1.4, -80 - (c % 3) * 10);
       this.cloudGroup.add(cluster);
     }
     this.scene.add(this.cloudGroup);
 
-    // Hot Air Balloons drifting high in Countryside & Red Canyon skies
+    // Hot Air Balloons drifting high in Countryside, Red Canyon & Vice skies
     this.balloonGroup = new THREE.Group();
     const balloonColors = ['#ef4444', '#f59e0b', '#0ea5e9'];
     balloonColors.forEach((bCol, idx) => {
       const b = new THREE.Group();
       const env = new THREE.Mesh(
-        new THREE.SphereGeometry(2.4, 14, 12),
+        new THREE.SphereGeometry(0.95, 14, 12),
         new THREE.MeshStandardMaterial({ color: bCol, roughness: 0.72 }),
       );
       env.scale.set(1, 1.24, 1);
       const band = new THREE.Mesh(
-        new THREE.CylinderGeometry(2.38, 2.15, 0.85, 14),
+        new THREE.CylinderGeometry(0.94, 0.85, 0.34, 14),
         new THREE.MeshStandardMaterial({ color: '#fef08a', roughness: 0.72 }),
       );
-      band.position.y = 0.25;
+      band.position.y = 0.1;
       const basket = new THREE.Mesh(
-        new THREE.BoxGeometry(0.9, 0.7, 0.9),
+        new THREE.BoxGeometry(0.36, 0.28, 0.36),
         new THREE.MeshStandardMaterial({ color: '#78350f', roughness: 0.9 }),
       );
-      basket.position.y = -3.6;
+      basket.position.y = -1.45;
       b.add(env, band, basket);
-      b.position.set(-45 + idx * 52, 22 + idx * 4.5, -62 - idx * 10);
+      b.position.set(-16 + idx * 18, 4.5 + idx * 1.4, -62 - idx * 10);
       this.balloonGroup.add(b);
     });
     this.scene.add(this.balloonGroup);
@@ -722,22 +761,24 @@ export class WorldSceneController {
         });
       }
       [-2.5, 2.5].forEach((pz) => {
+        const isFront = pz > 0;
         const post = new THREE.Mesh(
-          new THREE.BoxGeometry(0.2, 1.25, 0.2),
+          new THREE.BoxGeometry(0.18, isFront ? 0.55 : 1.15, 0.18),
           darkWoodMat,
         );
-        post.position.set(px, sag + 0.6, pz);
+        post.position.set(px, sag + (isFront ? 0.24 : 0.55), pz);
         g.add(post);
       });
     }
 
     [-2.5, 2.5].forEach((pz) => {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(span, 0.14, 0.14), woodMat);
-      rail.position.set(span * 0.5, 0.92, pz);
+      const isFront = pz > 0;
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(span, 0.12, 0.12), woodMat);
+      rail.position.set(span * 0.5, isFront ? 0.36 : 0.88, pz);
       g.add(rail);
 
-      const cable = new THREE.Mesh(new THREE.BoxGeometry(span, 0.06, 0.06), cableMat);
-      cable.position.set(span * 0.5, 0.35, pz);
+      const cable = new THREE.Mesh(new THREE.BoxGeometry(span, 0.05, 0.05), cableMat);
+      cable.position.set(span * 0.5, isFront ? 0.16 : 0.35, pz);
       g.add(cable);
     });
 
@@ -949,6 +990,10 @@ export class WorldSceneController {
 
   public setMode(mode: WorldMode): void {
     this.mode = mode;
+    if (this.ghostRig && mode !== 'PLAYING') {
+      this.ghostRig.root.visible = false;
+    }
+    this.updateOrthoFrustum();
   }
 
   public setInput(input: Partial<InputState>): void {
@@ -983,8 +1028,11 @@ export class WorldSceneController {
     this.shakeScale = mode === 'off' ? 0 : mode === 'subtle' ? 0.38 : 1.0;
   }
 
-  public setShowGhost(_show: boolean): void {
-    // Blue ghost rival hologram permanently disabled
+  public setShowGhost(show: boolean): void {
+    this.showGhost = show;
+    if (this.ghostRig && !show) {
+      this.ghostRig.root.visible = false;
+    }
   }
 
   public startRun(
@@ -1043,9 +1091,27 @@ export class WorldSceneController {
     }
 
     this.camZoom = save.tuning.cameraZoom || DEFAULT_TUNING.cameraZoom;
+    this.dynamicOrthoScale = 1.0;
     this.setCameraShakeMode(save.settings?.cameraShake ?? 'full');
+    this.setShowGhost(save.settings?.showGhost ?? true);
     this.simAccum = 0;
     this.particles.forEach((p) => (p.active = false));
+
+    // Ghost Rival playback + recording setup (active ONLY during race, subtle golden-amber silhouette)
+    if (this.ghostRig) {
+      this.scene.remove(this.ghostRig.root);
+      this.ghostRig.dispose();
+      this.ghostRig = null;
+    }
+    this.activeGhostTrack = save.stageGhosts?.[stage.id] ?? [];
+    this.recordedGhost = [];
+    this.runElapsedSec = 0;
+    this.ghostSampleAccum = 0;
+    if (this.activeGhostTrack.length >= 2) {
+      this.ghostRig = buildGhostVehicle3D(vehicle);
+      this.ghostRig.root.visible = false;
+      this.scene.add(this.ghostRig.root);
+    }
 
     this.physics = new HillClimbPhysics(
       stage,
@@ -1101,18 +1167,31 @@ export class WorldSceneController {
       consumeBoosters,
     );
 
-    this.camX = this.physics.state.x + 3.5;
-    this.camY = this.physics.state.y + 1.5;
+    const s0 = this.physics.state;
+    this.recordedGhost.push({ t: 0, x: s0.x, y: s0.y, a: s0.angle });
+    this.camX = s0.x + 3.2;
+    this.camY = s0.y + 1.2;
     this.mode = 'PLAYING';
+    this.updateOrthoFrustum();
     return this.physics;
   }
 
   public getRecordedGhost(): GhostSample[] {
-    return [];
+    return this.recordedGhost;
   }
 
   public getGhostDeltaMeters(): number | null {
-    return null;
+    if (
+      this.mode !== 'PLAYING' ||
+      !this.physics ||
+      !this.showGhost ||
+      this.activeGhostTrack.length < 2
+    ) {
+      return null;
+    }
+    const ghostSample = interpolateGhostSample(this.activeGhostTrack, this.runElapsedSec);
+    if (!ghostSample) return null;
+    return Math.round(this.physics.state.x - ghostSample.x);
   }
 
   public getPhysics(): HillClimbPhysics | null {
@@ -1139,12 +1218,37 @@ export class WorldSceneController {
     }
   }
 
+  private updateOrthoFrustum(): void {
+    const w = Math.max(1, this.container.clientWidth);
+    const h = Math.max(1, this.container.clientHeight);
+    const aspect = w / h;
+    const zoom = this.mode === 'TITLE' ? 1.15 : this.camZoom;
+    const scale = this.mode === 'TITLE' ? 1.0 : this.dynamicOrthoScale;
+    const minHalfW = ((this.mode === 'TITLE' ? 8.8 : 11.4) * scale) / zoom;
+    const baseHalfH = ((this.mode === 'TITLE' ? 5.6 : 7.4) * scale) / zoom;
+
+    let halfW: number;
+    let halfH: number;
+    if (aspect < minHalfW / baseHalfH) {
+      halfW = minHalfW;
+      halfH = minHalfW / aspect;
+    } else {
+      halfH = baseHalfH;
+      halfW = baseHalfH * aspect;
+    }
+
+    this.camera.left = -halfW;
+    this.camera.right = halfW;
+    this.camera.top = halfH;
+    this.camera.bottom = -halfH;
+    this.camera.updateProjectionMatrix();
+  }
+
   private handleResize(): void {
     if (this.disposed) return;
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+    this.updateOrthoFrustum();
     this.renderer.setSize(w, h);
   }
 
@@ -1194,6 +1298,21 @@ export class WorldSceneController {
         this.physics.step(fixedStep, this.input);
         this.simAccum -= fixedStep;
         substeps++;
+      }
+
+      if (!this.physics.state.crashed) {
+        this.runElapsedSec += dt;
+        this.ghostSampleAccum += dt;
+        if (this.ghostSampleAccum >= 0.12 && this.recordedGhost.length < 2500) {
+          this.ghostSampleAccum = 0;
+          const st = this.physics.state;
+          this.recordedGhost.push({
+            t: Number(this.runElapsedSec.toFixed(3)),
+            x: Number(st.x.toFixed(3)),
+            y: Number(st.y.toFixed(3)),
+            a: Number(st.angle.toFixed(4)),
+          });
+        }
       }
     }
 
@@ -1245,16 +1364,19 @@ export class WorldSceneController {
         rig.neonPoolMesh.visible = false;
       }
 
+      if (this.ghostRig) {
+        this.ghostRig.root.visible = false;
+      }
+
       this.updateShocksAndArms(rig, susp, susp);
 
-      const targetCamX = heroX - 2.6 + Math.sin(this.elapsed * 0.35) * 0.9;
-      const targetCamY = heroY + 1.15;
+      const targetCamX = heroX + 0.4 + Math.sin(this.elapsed * 0.35) * 0.65;
+      const targetCamY = heroY + 0.35;
       this.camX = THREE.MathUtils.damp(this.camX, targetCamX, 4, dt);
       this.camY = THREE.MathUtils.damp(this.camY, targetCamY, 4, dt);
-      this.camZ = THREE.MathUtils.damp(this.camZ, 12.8, 4, dt);
 
-      this.camera.position.set(this.camX, this.camY, this.camZ);
-      this.camera.lookAt(this.camX + 0.5, this.camY - 0.35, 0);
+      this.camera.position.set(this.camX, this.camY, 45);
+      this.camera.lookAt(this.camX, this.camY, 0);
       this.contactShadowMesh.visible = false;
       return;
     }
@@ -1331,30 +1453,57 @@ export class WorldSceneController {
     rig.dirtMat.color.set(biomeDirtColor);
     rig.dirtMat.opacity = this.dirtLevel * 0.9;
 
-    // Dynamic GTA/Forza-inspired chase camera (speed lag + air zoom-out + FOV punch)
+    // Ghost Rival Playback ONLY during PLAYING mode when enabled and valid track exists
+    if (this.ghostRig) {
+      if (
+        this.mode === 'PLAYING' &&
+        this.showGhost &&
+        this.activeGhostTrack.length >= 2
+      ) {
+        const gs = interpolateGhostSample(this.activeGhostTrack, this.runElapsedSec);
+        if (gs) {
+          this.ghostRig.root.visible = true;
+          this.ghostRig.root.position.set(gs.x, gs.y, -1.35);
+          this.ghostRig.root.rotation.z = gs.a;
+        } else {
+          this.ghostRig.root.visible = false;
+        }
+      } else {
+        this.ghostRig.root.visible = false;
+      }
+    }
+
+    // Crisp 2D/2.5D Orthographic Side-View Chase Camera with smooth speed/air zoom-out
     const speed = forwardSpeed;
     const groundY = sampleDriveHeight(s.x, this.activeStage);
     const heightAboveGround = Math.max(0, s.y - groundY - v.suspensionRest - v.wheelRadius);
-    const lookAheadX = THREE.MathUtils.clamp(s.vx * 0.36, -3.5, 9.5);
+    const lookAheadX = THREE.MathUtils.clamp(s.vx * 0.34, -2.5, 8.2);
     const targetCamX = s.x + 2.8 + lookAheadX;
-    const targetCamY = s.y + 1.85 + Math.min(3.5, speed * 0.06);
-    const targetCamZ = (16.5 + Math.min(8.5, speed * 0.24) + Math.min(4.5, heightAboveGround * 0.75)) / this.camZoom;
+    const targetCamY = s.y + 1.15 + Math.min(2.6, speed * 0.045);
 
-    this.camX = THREE.MathUtils.damp(this.camX, targetCamX, 6.5, dt);
-    this.camY = THREE.MathUtils.damp(this.camY, targetCamY, 5.2, dt);
-    this.camZ = THREE.MathUtils.damp(this.camZ, targetCamZ, 4.0, dt);
+    this.camX = THREE.MathUtils.damp(this.camX, targetCamX, 6.8, dt);
+    this.camY = THREE.MathUtils.damp(this.camY, targetCamY, 5.4, dt);
 
-    const targetFov = 43 + (s.nitroActive ? 5.8 : 0) + Math.min(6.5, speed * 0.18);
-    if (Math.abs(this.camera.fov - targetFov) > 0.05) {
-      this.camera.fov = THREE.MathUtils.damp(this.camera.fov, targetFov, 5, dt);
-      this.camera.updateProjectionMatrix();
+    const targetOrthoScale =
+      1.0 +
+      (s.nitroActive ? 0.08 : 0) +
+      Math.min(0.28, speed * 0.0075) +
+      Math.min(0.24, heightAboveGround * 0.045);
+    if (Math.abs(this.dynamicOrthoScale - targetOrthoScale) > 0.003) {
+      this.dynamicOrthoScale = THREE.MathUtils.damp(
+        this.dynamicOrthoScale,
+        targetOrthoScale,
+        4.5,
+        dt,
+      );
+      this.updateOrthoFrustum();
     }
 
-    const shakeX = (Math.random() - 0.5) * s.shakeIntensity * 0.9 * this.shakeScale;
-    const shakeY = (Math.random() - 0.5) * s.shakeIntensity * 0.9 * this.shakeScale;
+    const shakeX = (Math.random() - 0.5) * s.shakeIntensity * 0.75 * this.shakeScale;
+    const shakeY = (Math.random() - 0.5) * s.shakeIntensity * 0.75 * this.shakeScale;
 
-    this.camera.position.set(this.camX + shakeX, this.camY + shakeY, this.camZ);
-    this.camera.lookAt(this.camX + 1.1, this.camY - 0.75, 0);
+    this.camera.position.set(this.camX + shakeX, this.camY + shakeY, 45);
+    this.camera.lookAt(this.camX + shakeX, this.camY + shakeY, 0);
 
     // Keep contact shadow anchored to terrain directly below vehicle chassis
     this.contactShadowMesh.visible = true;
@@ -1417,11 +1566,11 @@ export class WorldSceneController {
       }
 
       cliffPos.setXYZ(v0, x, gy, 4.2);
-      cliffPos.setXYZ(v1, x, gy - 28, 4.2);
+      cliffPos.setXYZ(v1, x, gy - 44, 4.2);
       cliffUv.setXY(v0, x * 0.09, 0);
       cliffUv.setXY(v1, x * 0.09, 1);
       cliffCol.setXYZ(v0, 1, 1, 1);
-      cliffCol.setXYZ(v1, 0.6, 0.6, 0.6);
+      cliffCol.setXYZ(v1, 0.58, 0.58, 0.58);
     }
 
     roadPos.needsUpdate = true;
@@ -1442,7 +1591,7 @@ export class WorldSceneController {
 
     const updateRidge = (geo: THREE.BufferGeometry, parallax: number, baseY: number, scaleY: number, freq: number) => {
       const pos = geo.attributes.position as THREE.BufferAttribute;
-      const step = 3.2;
+      const step = 4.2;
       const ridgeStart = this.camX - (RIDGE_SEGMENTS * step) * 0.5;
       for (let i = 0; i <= RIDGE_SEGMENTS; i++) {
         const x = ridgeStart + i * step;
@@ -1452,14 +1601,14 @@ export class WorldSceneController {
           Math.sin(wx * freq) * scaleY +
           Math.sin(wx * freq * 2.3 + 1.1) * (scaleY * 0.45) +
           Math.abs(Math.cos(wx * freq * 0.6)) * (scaleY * 0.55);
-        pos.setXYZ(i * 2, x, this.camY * 0.35 + h, 0);
-        pos.setXYZ(i * 2 + 1, x, this.camY * 0.35 - 48, 0);
+        pos.setXYZ(i * 2, x, this.camY * 0.55 + h, 0);
+        pos.setXYZ(i * 2 + 1, x, this.camY * 0.55 - 70, 0);
       }
       pos.needsUpdate = true;
     };
 
-    updateRidge(this.farRidgeGeo, 0.16, 10, 11.5 * this.activeStage.ampMult, 0.042);
-    updateRidge(this.midRidgeGeo, 0.35, 3, 6.8 * this.activeStage.ampMult, 0.068);
+    updateRidge(this.farRidgeGeo, 0.16, 4.5, 4.8 * this.activeStage.ampMult, 0.055);
+    updateRidge(this.midRidgeGeo, 0.35, 1.2, 3.2 * this.activeStage.ampMult, 0.085);
   }
 
   private clearGroupChildren(grp: THREE.Group): void {
@@ -1552,7 +1701,7 @@ export class WorldSceneController {
       }
     }
 
-    // Foreground Parallax Props (passing fence posts / scrub / rocks at z = +5.6..+7.6)
+    // Foreground Parallax Props kept low (py - 0.55) so orthographic side-view never occludes tires/chassis
     const fgSpacing = 18;
     const fgStart = Math.floor((this.camX - 36) / fgSpacing);
     for (let i = 0; i < FG_POOL_SIZE; i++) {
@@ -1564,12 +1713,13 @@ export class WorldSceneController {
       }
       const px = slot * fgSpacing + hash01(slot * 29) * 7;
       const br = getBridgeInfo(px, this.activeStage);
-      if (br.active || hash01(slot * 37) < 0.4) {
+      if (br.active || hash01(slot * 37) < 0.45) {
         grp.visible = false;
       } else {
         grp.visible = true;
         const py = sampleBaseGroundHeight(px, this.activeStage);
-        grp.position.set(px, py - 0.3, 4.9 + hash01(slot * 13) * 2.2);
+        grp.scale.setScalar(0.75);
+        grp.position.set(px, py - 0.58, 4.9 + hash01(slot * 13) * 2.2);
       }
     }
 
@@ -2038,25 +2188,25 @@ export class WorldSceneController {
   }
 
   private updateAtmosphere(dt: number): void {
-    this.skyMesh.position.set(this.camX, this.camY + 12, -145);
-    this.sunDisc.position.set(this.camX + 38, this.camY + 24, -125);
-    this.earthDisc.position.set(this.camX - 30, this.camY + 24, -120);
+    this.skyMesh.position.set(this.camX, this.camY, -145);
+    this.sunDisc.position.set(this.camX + 9.5, this.camY + 5.2, -125);
+    this.earthDisc.position.set(this.camX - 7.5, this.camY + 4.8, -120);
     this.starPoints.position.set(this.camX, this.camY, 0);
-    this.cloudGroup.position.set(this.camX * 0.85, this.camY * 0.45, 0);
+    this.cloudGroup.position.set(this.camX * 0.85, this.camY * 0.82, 0);
     if (this.balloonGroup.visible) {
-      this.balloonGroup.position.set(this.camX * 0.72, this.camY * 0.35, 0);
+      this.balloonGroup.position.set(this.camX * 0.72, this.camY * 0.78, 0);
       this.balloonGroup.children.forEach((b, idx) => {
-        b.position.y = 22 + idx * 4.5 + Math.sin(this.elapsed * 0.6 + idx * 2) * 1.4;
+        b.position.y = 4.5 + idx * 1.4 + Math.sin(this.elapsed * 0.6 + idx * 2) * 0.45;
       });
     }
 
     if (this.auroraGroup.visible) {
-      this.auroraGroup.position.set(this.camX, this.camY + 8, 0);
+      this.auroraGroup.position.set(this.camX, this.camY + 2.2, 0);
       this.auroraBands.forEach((band, idx) => {
         const pos = band.geometry.attributes.position as THREE.BufferAttribute;
         for (let i = 0; i < pos.count; i++) {
           const x = pos.getX(i);
-          pos.setZ(i, Math.sin(x * 0.04 + this.elapsed * 0.9 + idx * 2) * 8);
+          pos.setZ(i, Math.sin(x * 0.08 + this.elapsed * 0.9 + idx * 2) * 4);
         }
         pos.needsUpdate = true;
       });
@@ -2068,8 +2218,8 @@ export class WorldSceneController {
       for (let i = 0; i < this.ambientSnowPos.length; i += 3) {
         this.ambientSnowPos[i] -= (isSnow ? 1.8 : 4.5) * dt;
         this.ambientSnowPos[i + 1] -= (isSnow ? 3.2 : 0.4) * dt;
-        if (this.ambientSnowPos[i + 1] < -10) this.ambientSnowPos[i + 1] = 18;
-        if (this.ambientSnowPos[i] < -30) this.ambientSnowPos[i] = 30;
+        if (this.ambientSnowPos[i + 1] < -16) this.ambientSnowPos[i + 1] = 18;
+        if (this.ambientSnowPos[i] < -26) this.ambientSnowPos[i] = 26;
       }
       this.ambientSnowMesh.geometry.attributes.position.needsUpdate = true;
     }
@@ -2081,6 +2231,7 @@ export class WorldSceneController {
     clearTimeout(this.frameId);
     this.resizeObserver.disconnect();
     this.vehicleRig?.dispose();
+    this.ghostRig?.dispose();
     this.roadTex?.dispose();
     this.strataTex?.dispose();
     this.terrainBumpTex.dispose();
