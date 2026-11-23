@@ -46,18 +46,50 @@ export function loadSaveData(): SaveData {
       vehiclePaints: { ...base.vehiclePaints, ...(parsed.vehiclePaints ?? {}) },
       vehicleWheels: { ...base.vehicleWheels, ...(parsed.vehicleWheels ?? {}) },
       unlockedWheels: { ...base.unlockedWheels, ...(parsed.unlockedWheels ?? {}) },
+      vehicleAccessories: {
+        ranger: parsed.vehicleAccessories?.ranger ?? base.vehicleAccessories.ranger,
+        monster: parsed.vehicleAccessories?.monster ?? base.vehicleAccessories.monster,
+        buggy: parsed.vehicleAccessories?.buggy ?? base.vehicleAccessories.buggy,
+        muscle: parsed.vehicleAccessories?.muscle ?? base.vehicleAccessories.muscle,
+        superbike: parsed.vehicleAccessories?.superbike ?? base.vehicleAccessories.superbike,
+        cheetah_vc: parsed.vehicleAccessories?.cheetah_vc ?? base.vehicleAccessories.cheetah_vc,
+        donk_leonida: parsed.vehicleAccessories?.donk_leonida ?? base.vehicleAccessories.donk_leonida,
+      },
+      unlockedAccessories: {
+        ...base.unlockedAccessories,
+        ...(parsed.unlockedAccessories ?? {}),
+      },
+      vehicleNeons: {
+        ...base.vehicleNeons,
+        ...(parsed.vehicleNeons ?? {}),
+      },
+      vehicleLiveries: {
+        ...base.vehicleLiveries,
+        ...(parsed.vehicleLiveries ?? {}),
+      },
       upgrades: {
         ranger: { ...base.upgrades.ranger, ...(parsed.upgrades?.ranger ?? {}) },
         monster: { ...base.upgrades.monster, ...(parsed.upgrades?.monster ?? {}) },
         buggy: { ...base.upgrades.buggy, ...(parsed.upgrades?.buggy ?? {}) },
         muscle: { ...base.upgrades.muscle, ...(parsed.upgrades?.muscle ?? {}) },
         superbike: { ...base.upgrades.superbike, ...(parsed.upgrades?.superbike ?? {}) },
+        cheetah_vc: { ...base.upgrades.cheetah_vc, ...(parsed.upgrades?.cheetah_vc ?? {}) },
+        donk_leonida: { ...base.upgrades.donk_leonida, ...(parsed.upgrades?.donk_leonida ?? {}) },
       },
       stageBests: { ...base.stageBests, ...(parsed.stageBests ?? {}) },
+      stageGhosts: {
+        countryside: parsed.stageGhosts?.countryside ?? [],
+        red_canyon: parsed.stageGhosts?.red_canyon ?? [],
+        frost_peaks: parsed.stageGhosts?.frost_peaks ?? [],
+        moon: parsed.stageGhosts?.moon ?? [],
+        vice_coast: parsed.stageGhosts?.vice_coast ?? [],
+      },
       boosters: { ...base.boosters, ...(parsed.boosters ?? {}) },
       claimedRewards: { ...(parsed.claimedRewards ?? {}) },
       totals: { ...base.totals, ...(parsed.totals ?? {}) },
       tuning: { ...base.tuning, ...(parsed.tuning ?? {}) },
+      settings: { ...base.settings, ...(parsed.settings ?? {}) },
+      tutorialSeen: parsed.tutorialSeen ?? base.tutorialSeen,
     };
 
     return regenTickets(merged);
@@ -83,8 +115,9 @@ export function resetSaveData(): SaveData {
 export function isStageUnlocked(stageId: StageId, save: SaveData): boolean {
   const idx = STAGES.findIndex((s) => s.id === stageId);
   if (idx <= 0) return true;
-  const prevStage = STAGES[idx - 1];
   const req = STAGES[idx].unlockPrevBestMeters;
+  if (req <= 0) return true;
+  const prevStage = STAGES[idx - 1];
   return (save.stageBests[prevStage.id] ?? 0) >= req;
 }
 

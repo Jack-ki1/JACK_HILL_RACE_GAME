@@ -1,0 +1,1539 @@
+
+You are taking over this project as a combined team of:
+
+- Principal Game Developer and Game Engine Architect.
+- Senior Three.js / WebGL Engineer.
+- Senior Gameplay and Vehicle Physics Engineer.
+- AAA Game UI/UX Designer.
+- Senior 3D Environment and Vehicle Technical Artist.
+- Motion Graphics and Interaction Designer.
+- Game Audio Engineer.
+- Frontend Architect and Performance Engineer.
+- Game QA and Release Engineer.
+
+You are not here to make a few CSS changes.
+
+You are responsible for transforming the EXISTING project into an exceptionally polished, visually impressive, highly playable and professionally engineered browser-based off-road racing game.
+
+Think like a game studio that has been given an existing game with a good foundation but needs to elevate it into something that looks and feels like a major commercial release.
+
+I am giving you only a starting direction and a reference image. You are responsible for filling in the missing design decisions, creative direction, interaction design, technical improvements, visual details and implementation.
+
+Do not limit your ambition to what is explicitly described below. Make intelligent decisions and introduce improvements that genuinely elevate the experience.
+
+# 1. PROJECT CONTEXT
+
+Project name: HILL CLIMB RACING 3: FRONTIER
+
+GitHub repository:
+https://github.com/Jack-ki1/JACK_HILL_RACE_GAME
+
+Deployment:
+The existing project is hosted on Vercel.
+
+Reference image:
+Use the image attached to this conversation as the principal visual inspiration.
+
+IMPORTANT:
+The image is a visual reference for the quality, composition, presentation, colours, environmental artwork, garage, HUD, vehicle cards, upgrade interface, world map and shop.
+
+Do not simply reproduce the screenshot.
+
+Develop a more sophisticated, original and cohesive interpretation of its ideas.
+
+Do not insert the entire screenshot as a background or flatten the interface into a single image. All interface elements must remain real, interactive application components, and the actual vehicle and gameplay environment must remain properly rendered.
+
+## 1.1 Understand what already exists
+
+The repository already contains a substantial game implementation.
+
+The existing technical foundation includes:
+
+- React 19.
+- TypeScript.
+- Vite 8.
+- Tailwind CSS 4.
+- Three.js.
+- Lucide React.
+- Motion.
+- Web Audio API.
+- A custom Three.js rendering and scene-management system.
+- Custom vehicle physics and terrain generation.
+
+The existing gameplay includes:
+
+### Four environments
+1. Countryside.
+2. Red Canyon.
+3. Frost Peaks.
+4. Moon Crater.
+
+### Five playable vehicles
+1. Ranger.
+2. Monster.
+3. Buggy.
+4. Muscle.
+5. Superbike.
+
+### Existing systems
+- Independent wheel suspension and vehicle traction.
+- Mid-air vehicle rotation.
+- Fuel consumption.
+- Nitro.
+- Collectible coins and fuel.
+- Garage and vehicle selection.
+- 360-degree vehicle inspection.
+- Paint customisation.
+- Wheel customisation.
+- Engine upgrades.
+- Suspension upgrades.
+- Tire upgrades.
+- Four-wheel-drive upgrades.
+- Fuel tank upgrades.
+- Physics tuning.
+- World map.
+- Shop.
+- Missions.
+- Seasonal progression.
+- Coins and gems.
+- Local save persistence.
+- Audio and gameplay sound effects.
+
+Important source files include:
+
+- `src/App.tsx`
+- `src/game/worldScene.ts`
+- `src/game/garageScene.ts`
+- `src/game/models.ts`
+- `src/game/physics.ts`
+- `src/game/terrain.ts`
+- `src/game/textures.ts`
+- `src/game/audio.ts`
+- `src/game/storage.ts`
+- `src/game/constants.ts`
+- `src/components/TitleOverlay.tsx`
+- `src/components/GameplayHud.tsx`
+- `src/components/GarageModal.tsx`
+- `src/components/WorldMapModal.tsx`
+- `src/components/UpgradesModal.tsx`
+- `src/components/ShopModal.tsx`
+- `src/components/MissionsModal.tsx`
+- `src/components/TuningModal.tsx`
+- `src/components/PauseAndGameOverModal.tsx`
+
+These are starting points, not limitations.
+
+Inspect the complete repository before changing anything.
+
+Understand how the systems communicate and how the existing features work.
+
+**CRITICAL: Preserve the functioning game. Do not sacrifice the existing gameplay, physics, progression or data integrity to achieve visual improvements.**
+
+# 2. THE OVERALL CREATIVE VISION
+
+Build an immersive premium off-road adventure game.
+
+The experience should combine:
+
+- Cinematic 3D environmental presentation.
+- Beautifully modelled off-road vehicles.
+- A professional motorsport-inspired interface.
+- Rich environmental storytelling.
+- Tactile controls.
+- Sophisticated animations.
+- Excellent information hierarchy.
+- Attractive progression and reward systems.
+- Smooth and responsive gameplay.
+
+The interface should look like a professionally art-directed modern racing game, not an ordinary website, admin dashboard or generic AI-generated application.
+
+I want the experience to feel exciting even before someone presses PLAY.
+
+A player should immediately understand that they are entering a large off-road adventure.
+
+## 2.1 Desired visual qualities
+
+Aim for:
+
+- Cinematic environmental lighting.
+- Detailed and attractive 3D scenery.
+- Excellent material quality.
+- Beautiful terrain silhouettes.
+- Rich colours without visual clutter.
+- Sharp typography.
+- Carefully composed interface elements.
+- Deep environmental atmosphere.
+- Premium-looking vehicle presentation.
+- Excellent contrast and legibility.
+- Purposeful movement and interaction feedback.
+
+The visual style should be a sophisticated combination of realistic-stylised 3D environments and arcade racing aesthetics.
+
+Avoid making the game excessively cartoonish.
+
+Avoid making it look like an ordinary realistic driving simulator either.
+
+It should have its own recognisable visual identity.
+
+# 3. CREATE A COMPLETE DESIGN SYSTEM
+
+Before rebuilding individual screens, establish one consistent visual system.
+
+## 3.1 Colour direction
+
+Use a dark motorsport-inspired foundation complemented by distinctive environmental colours.
+
+Suggested foundation:
+
+- Obsidian: `#080D13`
+- Midnight graphite: `#111923`
+- Deep steel: `#1B2733`
+- Secondary panel: `#202E3A`
+- Warm racing yellow: `#FFC52E`
+- Performance orange: `#FF751F`
+- Electric cyan: `#27C9F4`
+- Adventure green: `#73D66A`
+- Premium violet: `#A66BFF`
+- Pure white: `#FFFFFF`
+
+Use these colours intelligently.
+
+Yellow and amber should communicate the primary action, coins, rewards and important highlights.
+
+Cyan should communicate telemetry, selected options and technical information.
+
+Green should communicate performance improvements and success.
+
+Red should communicate warnings, dangerous conditions and failures.
+
+Violet can distinguish seasonal events and premium rewards.
+
+Do not use every accent colour everywhere.
+
+Each screen should have one dominant accent and a clear information hierarchy.
+
+The four environments should also have their own distinctive palettes.
+
+## 3.2 Typography
+
+Use a professional motorsport typography system.
+
+Preferred direction:
+
+- Strong condensed display typography for titles and major actions.
+- Clean geometric sans-serif typography for interface labels.
+- Monospaced numerals for telemetry, distance, coins and performance statistics.
+
+Existing Chakra Petch, Outfit and JetBrains Mono fonts are a reasonable foundation. Improve their hierarchy, weights, sizing and spacing before introducing unnecessary dependencies.
+
+Headings should feel bold and energetic.
+
+Numbers should align consistently and remain easy to read.
+
+Avoid tiny interface text, excessive letter spacing and unnecessary uppercase labels.
+
+## 3.3 Interface surfaces
+
+Create a distinctive panel and button system.
+
+Use:
+
+- Carefully shaped corners.
+- Subtle metallic edges.
+- Deep directional shadows.
+- Restrained gradients.
+- Layered dark surfaces.
+- Subtle lighting effects.
+- Selected-state highlights.
+- Clear disabled states.
+- Strong pressed states.
+
+Introduce occasional industrial detailing such as fine technical lines, fastener-like accents, mechanical labels and subtle carbon-fibre-inspired surfaces.
+
+However, do not make every card look like a metal box.
+
+The interface should be attractive and clean, not visually noisy.
+
+Avoid generic glassmorphism everywhere, excessive blur, random gradients, glowing borders around every component and unnecessary floating panels.
+
+# 4. MAIN MENU — COMPLETE VISUAL TRANSFORMATION
+
+This is one of the most important parts of the project.
+
+The main menu must become a genuinely impressive first impression.
+
+Use the attached image as the primary layout inspiration, then improve upon it.
+
+## 4.1 Background environment
+
+The main menu should feature a large cinematic 3D environment.
+
+The selected vehicle should be prominently presented in the environment.
+
+Consider:
+
+- A beautiful mountain valley.
+- Layered mountain ranges.
+- Detailed hills.
+- Off-road trails.
+- Trees and vegetation.
+- Rocks and environmental props.
+- Clouds and atmospheric depth.
+- Sunlight and environmental shadows.
+- Suspended dust particles.
+- Subtle wind effects.
+- Cinematic colour grading.
+
+The world must feel alive.
+
+Do not use a static background when the existing Three.js scene can provide an interactive environment.
+
+The selected vehicle should have a subtle idle animation, appropriate suspension movement, rotating wheel details where suitable, subtle exhaust activity and environmental interaction.
+
+Use a cinematic camera composition that gives the vehicle enough space and keeps essential interface elements readable.
+
+## 4.2 Main menu layout
+
+Develop a carefully composed landscape-oriented interface.
+
+### Top-left
+
+A premium player identity panel.
+
+Include:
+
+- Player avatar.
+- Player name.
+- Current rank or title.
+- Selected vehicle class.
+- Overall progression indicator.
+
+### Top-right
+
+A refined resource and account strip.
+
+Include:
+
+- Coins.
+- Gems.
+- Fuel tickets.
+- Settings.
+- Audio controls if appropriate.
+
+Currencies must update from the real save data.
+
+Use excellent iconography and numerical presentation.
+
+### Left-side navigation
+
+Create an attractive, compact navigation system.
+
+Main destinations:
+
+- Garage.
+- World Map.
+- Missions.
+- Events.
+- Shop.
+- Settings.
+
+Make navigation beautiful without occupying excessive screen space.
+
+Provide selected, hover, focus and pressed states.
+
+The navigation should feel like part of a racing game, not a website sidebar.
+
+### Main title area
+
+Develop a distinctive and professionally designed game identity.
+
+Use strong typography, proper spacing, an original logo treatment and restrained visual effects.
+
+Preserve the current project identity unless a stronger original brand treatment is needed.
+
+Do not download or copy third-party copyrighted game logos.
+
+### Bottom-left
+
+Create a season or adventure progression panel.
+
+Include:
+
+- Season name.
+- Current tier.
+- Progress bar.
+- Reward preview.
+- A small vehicle or environment illustration.
+- A clear navigation action.
+
+### Primary action
+
+The PLAY button must be one of the most visually prominent elements.
+
+Make it substantial, attractive and immediately recognisable.
+
+Include:
+
+- Animated hover and press effects.
+- Subtle highlight movement.
+- Clear typography.
+- Current best distance.
+- Selected stage information.
+- An appropriate play confirmation effect.
+
+It should feel satisfying to interact with.
+
+### Adventure selection
+
+Create an attractive environment-selection entry point showing the selected biome, a small illustration and relevant progression information.
+
+The main screen should clearly communicate what adventure the player is about to start.
+
+## 4.3 Main menu interactions
+
+All visible elements must perform their intended actions.
+
+The menu must:
+
+- Remember the selected vehicle.
+- Remember the selected stage.
+- Display real currency balances.
+- Display actual progression.
+- Show claimable rewards correctly.
+- Navigate to the correct screens.
+- Update when save data changes.
+- Support keyboard and pointer interaction.
+
+Do not introduce decorative controls that do nothing.
+
+# 5. GARAGE — CREATE A PREMIUM AUTOMOTIVE SHOWROOM
+
+The garage should feel like a high-end off-road vehicle workshop.
+
+The screenshot's dark professional showroom is an excellent starting direction.
+
+## 5.1 3D showroom
+
+Use the existing `GarageSceneController` and vehicle models as the foundation.
+
+Elevate the presentation with:
+
+- A high-quality showroom environment.
+- Dark polished workshop flooring.
+- Detailed display platform.
+- Dramatic overhead lighting.
+- Controlled rim lighting.
+- Realistic contact shadows.
+- Attractive environmental reflections.
+- Background workshop details.
+- Professional camera framing.
+
+Present the selected vehicle prominently.
+
+It must remain fully interactive.
+
+Allow the user to drag the vehicle to rotate it through 360 degrees.
+
+Include suitable camera presets, such as:
+
+- Hero view.
+- Front view.
+- Side view.
+- Rear view.
+- Detail view.
+
+Transition between camera positions smoothly.
+
+Do not use a static vehicle photograph as a replacement for the actual 3D vehicle model.
+
+## 5.2 Vehicle information
+
+Display:
+
+- Vehicle name.
+- Vehicle class.
+- Unlock status.
+- Performance statistics.
+- Upgrade levels.
+- Current paint.
+- Current wheel configuration.
+
+Present statistics through attractive, readable technical bars or indicators.
+
+Include performance characteristics where supported by actual game configuration:
+
+- Power.
+- Acceleration.
+- Maximum speed.
+- Suspension.
+- Grip.
+- Air control.
+- Stability.
+
+Do not invent numerical performance data.
+
+Use the existing vehicle configurations and upgrade system.
+
+## 5.3 Vehicle carousel
+
+At the bottom of the screen, create a professional horizontal vehicle selector.
+
+Each vehicle should have:
+
+- Distinctive vehicle artwork or an appropriate 3D preview.
+- Vehicle name.
+- Class.
+- Selection indication.
+- Unlock or ownership status.
+- Selected-star or equipped indicator where applicable.
+
+The active vehicle should receive a highly visible but tasteful selection treatment.
+
+Allow smooth scrolling and selection.
+
+## 5.4 Customisation system
+
+Provide dedicated customisation areas:
+
+### Paint
+- Original colour finishes.
+- Premium paint treatments.
+- Current selection.
+- Unlock and affordability status.
+
+### Wheels
+- Different rim designs.
+- Tyre and rim colours.
+- Equipped state.
+- Purchase or unlock status.
+
+### Upgrades
+Provide direct access to vehicle upgrades.
+
+Every selection must update the actual 3D vehicle.
+
+Do not create a visual-only customisation interface that fails to affect the model.
+
+# 6. GAMEPLAY — TRANSFORM THE MOMENT-TO-MOMENT EXPERIENCE
+
+Gameplay is the heart of the project.
+
+The game must look as good while being played as it does in the menus.
+
+## 6.1 Environment rendering
+
+Continue building on the existing Three.js world renderer.
+
+Improve its visual output substantially.
+
+Each biome should have a distinctive identity.
+
+### Countryside
+
+Create an inviting, beautiful off-road countryside.
+
+Include:
+
+- Layered green hills.
+- Grass variation.
+- Detailed dirt trails.
+- Rolling mountains.
+- Distant forests.
+- Wooden structures.
+- Rocks.
+- Bridges.
+- Environmental vegetation.
+- Floating dust and debris.
+
+### Red Canyon
+
+Create a dramatic desert adventure.
+
+Include:
+
+- Deep red-orange sandstone formations.
+- Large canyon walls.
+- Geological strata.
+- Desert vegetation.
+- Wooden bridges and dangerous drops.
+- Suspended dust.
+- Warm directional lighting.
+- Deep environmental shadows.
+
+### Frost Peaks
+
+Create a cold alpine environment.
+
+Include:
+
+- Snow-covered mountain ranges.
+- Detailed icy terrain.
+- Snowfall.
+- Frost.
+- Glacial formations.
+- Aurora effects.
+- Atmospheric blue lighting.
+- Headlight illumination.
+- Distinctive icy surfaces.
+
+### Moon Crater
+
+Create a visually compelling lunar environment.
+
+Include:
+
+- Cratered terrain.
+- Lunar mountains.
+- A star-filled sky.
+- Earth in the distance.
+- Regolith details.
+- Subtle atmospheric effects.
+- Distinctive low-gravity visual feedback.
+
+Each biome must feel like a different world.
+
+Do not simply reuse the same environmental objects with different material colours.
+
+## 6.2 Vehicle rendering
+
+Improve the visual quality of all five vehicles.
+
+Pay special attention to:
+
+- Vehicle proportions.
+- Bodywork.
+- Metallic materials.
+- Wheel detail.
+- Tyre tread.
+- Suspension.
+- Headlights.
+- Brake lights.
+- Exhaust.
+- Driver positioning.
+- Roll cages.
+- Chassis detailing.
+
+Make the vehicles visually distinguishable even at a relatively small screen size.
+
+Improve vehicle animations:
+
+- Wheel rotation.
+- Suspension compression and rebound.
+- Chassis tilting.
+- Driver movement.
+- Exhaust effects.
+- Nitro effects.
+- Landing reactions.
+- Vehicle collision reactions.
+
+Use the existing models as a foundation and replace or improve weak visual details.
+
+## 6.3 Camera system
+
+Create a more polished and responsive racing camera.
+
+It should:
+
+- Track the vehicle smoothly.
+- Adapt to jumps.
+- Respond to acceleration.
+- Respond to high-speed movement.
+- Communicate impacts.
+- Create cinematic moments during stunts.
+- Maintain enough space to see upcoming terrain.
+
+Avoid excessive camera shake.
+
+Camera movement should communicate vehicle behaviour rather than distract players.
+
+## 6.4 Environmental feedback
+
+Make the environment react to gameplay.
+
+Examples:
+
+- Dust appears when tyres lose traction.
+- Particles respond to vehicle impacts.
+- Snow effects become visible in Frost Peaks.
+- Nitro produces a convincing visual effect.
+- Coins animate when collected.
+- Fuel collection produces an attractive notification.
+- Wheel landings create appropriate terrain effects.
+- Large jumps trigger satisfying stunt feedback.
+
+Make these effects visually attractive but performance-conscious.
+
+# 7. GAMEPLAY HUD — PROFESSIONAL MOTORSPORT TELEMETRY
+
+The attached reference image has an excellent general direction for this screen.
+
+Develop a substantially improved implementation.
+
+### Top-left
+
+Compact resource indicators:
+
+- Coins earned.
+- Gems.
+- Other necessary run information.
+
+### Top-centre
+
+The distance counter must be highly visible.
+
+Also include:
+
+- Stage name.
+- Personal best.
+- Optional race-progress feedback.
+
+### Fuel information
+
+Develop a professional fuel indicator.
+
+It should communicate:
+
+- Current fuel percentage.
+- Fuel consumption.
+- Low-fuel warning.
+- Clear visual changes as fuel decreases.
+
+### Top-right
+
+Provide:
+
+- Pause.
+- Audio.
+- Settings where appropriate.
+
+### Bottom-centre
+
+Create a beautiful motorsport instrument cluster.
+
+Include:
+
+- Speedometer.
+- RPM gauge.
+- Gear indicator.
+- Nitro meter.
+- Fuel or other relevant telemetry if space permits.
+
+Use refined circular gauges, carefully designed tick marks, readable digits and smoothly moving needles.
+
+The speedometer should be the primary instrument.
+
+Do not allow the gauges to obstruct the vehicle or road.
+
+### Driving controls
+
+Create large tactile virtual controls:
+
+- BRAKE.
+- GAS.
+- NITRO.
+
+The brake and accelerator should be positioned comfortably toward the lower corners.
+
+Use a premium industrial pedal design with excellent pressed feedback.
+
+Ensure controls are large enough for touchscreen operation.
+
+### Gameplay feedback
+
+Create polished visual responses for:
+
+- Coin collection.
+- Fuel pickup.
+- Nitro activation.
+- Gear shifts.
+- Wheelies.
+- Front flips.
+- Backflips.
+- Long jumps.
+- Perfect landings.
+- Crashes.
+- New distance records.
+
+Use dynamic callouts that appear at appropriate moments and then disappear naturally.
+
+Avoid flooding the screen with permanent notifications.
+
+# 8. WORLD MAP — BUILD AN EXPLORATION EXPERIENCE
+
+This is an area that deserves considerable creative work.
+
+The present map is functional, but its simple SVG representation should be elevated.
+
+Develop a rich illustrated or 3D-styled adventure map.
+
+Imagine a beautifully presented miniature off-road expedition world.
+
+Show the four environments as visually distinct geographical regions.
+
+Include:
+
+- Green countryside terrain.
+- Dramatic canyon formations.
+- Icy mountain ranges.
+- Lunar terrain.
+- Roads and connecting routes.
+- Exploration landmarks.
+- Stage nodes.
+- Locked stages.
+- Completed stages.
+- Best-distance indicators.
+- Star ratings.
+- Progress markers.
+
+When a stage is selected, display a beautiful information panel containing:
+
+- Stage name.
+- Environment preview.
+- Description.
+- Unlock condition.
+- Personal best.
+- Star progress.
+- Relevant terrain characteristics.
+
+Provide an obvious RACE action.
+
+The map should feel like an adventure game map, not a business dashboard.
+
+All existing stage unlock logic must remain intact.
+
+# 9. UPGRADES — MAKE MECHANICAL PROGRESSION EXCITING
+
+Redesign the existing upgrades interface.
+
+Create five distinct mechanical upgrade categories:
+
+1. Engine.
+2. Suspension.
+3. Tires.
+4. 4WD.
+5. Fuel Tank.
+
+Each card should contain:
+
+- High-quality mechanical artwork.
+- Upgrade category.
+- Current level.
+- Maximum level.
+- Progress indicator.
+- Upgrade cost.
+- Purchase button.
+- Disabled state.
+- Maximum-level state.
+
+Add an improvement preview showing the current level and what changes after purchasing an upgrade.
+
+Where the game supports it, provide real performance comparisons.
+
+Use a visually distinctive design for each mechanical category without destroying the overall design consistency.
+
+The user should clearly understand the value of every upgrade.
+
+Purchasing must deduct the actual coins and update the actual upgrade state.
+
+# 10. SHOP — PROFESSIONAL IN-GAME STORE
+
+Build an attractive and well-organised shop.
+
+Preserve the existing local game economy.
+
+Organise content into clear tabs:
+
+- Offers.
+- Currency.
+- Boosts.
+- Chests.
+- Gems.
+
+Where supported by existing systems, include:
+
+- Free reward claims.
+- Coin packs purchased using existing in-game currency.
+- Fuel replenishment.
+- Nitro boosters.
+- Coin magnets.
+- Fuel savers.
+- Starter bundles.
+- Mystery chests.
+
+Use excellent visual artwork for the products.
+
+The cards should communicate the actual reward, cost and availability.
+
+Add satisfying purchase feedback and reward-opening animations.
+
+IMPORTANT:
+
+The existing storefront operates locally using the game's in-game currency.
+
+Do not silently introduce real-money payments, payment gateways or external purchase claims.
+
+Do not display real-world dollar pricing as an actionable real-money checkout unless a properly authorised payment system is explicitly requested and implemented separately.
+
+# 11. MISSIONS, EVENTS AND SEASONAL PROGRESSION
+
+Make progression feel meaningful.
+
+Improve the presentation of:
+
+- Career missions.
+- Daily and longer-term objectives where supported.
+- Seasonal progress.
+- Reward tiers.
+- Claimable rewards.
+- Completed objectives.
+- Locked rewards.
+
+Create visually attractive reward cards.
+
+Use progression animations and a satisfying reward-claim experience.
+
+Separate the conceptual identity of Missions and Events, even where they share existing progression data.
+
+Do not create duplicate or fabricated reward data just to make the screens look populated.
+
+# 12. TUNING BENCH
+
+Turn the current physics tuning screen into a proper technical workshop.
+
+Preserve the existing eight tuning parameters and presets.
+
+Present each slider with:
+
+- Technical name.
+- Short explanation.
+- Current value.
+- Minimum and maximum.
+- A visual indicator.
+- Clear reset functionality.
+
+Consider an attractive interactive vehicle or suspension illustration that helps communicate the selected parameter.
+
+Preserve the actual relationship between these values and the physics engine.
+
+A tuning change must affect actual gameplay, not merely its displayed numerical value.
+
+# 13. PAUSE SCREEN AND GAME-OVER EXPERIENCE
+
+Do not treat these screens as ordinary browser modals.
+
+### Pause screen
+
+Design a beautiful pause overlay with:
+
+- Resume.
+- Restart.
+- Garage.
+- Main menu.
+- Current stage context.
+
+Dim the environment appropriately and retain a sense of immersion.
+
+### Game-over screen
+
+Create a much more exciting run-completion experience.
+
+Display:
+
+- Final distance.
+- Personal best.
+- New-record indication.
+- Coins collected.
+- Flips completed.
+- Highest speed.
+- Other valid run statistics.
+- Retry.
+- Garage.
+- Main menu.
+
+If a new record is achieved, make it feel like a meaningful achievement.
+
+Use restrained cinematic effects, reward animations and excellent information hierarchy.
+
+Never fabricate statistics.
+
+# 14. CREATE A COMPLETE SETTINGS AND FIRST-TIME EXPERIENCE
+
+Introduce a polished settings screen if necessary.
+
+Include:
+
+- Master audio.
+- Sound effects volume.
+- Music volume, if music is implemented.
+- Graphics quality.
+- Camera shake intensity.
+- HUD options.
+- Control sensitivity where applicable.
+- Keyboard-control reference.
+- Touch-control reference.
+- Motion-reduction option.
+- Full-screen option.
+
+Add a lightweight first-time tutorial.
+
+It should explain the basic controls and the principle of balancing acceleration and braking.
+
+Keep it skippable.
+
+Do not interrupt returning players with repetitive tutorials.
+
+# 15. MOTION DESIGN AND MICROINTERACTIONS
+
+This is a major part of making the game feel professionally produced.
+
+Introduce a consistent animation language.
+
+### Interface transitions
+
+- Smooth screen entrances.
+- Attractive panel transitions.
+- Subtle scale and opacity changes.
+- Directional screen transitions where appropriate.
+- Consistent selected-state animations.
+
+### Buttons
+
+Implement:
+
+- Hover states.
+- Pressed states.
+- Focus states.
+- Disabled states.
+- Loading states where relevant.
+- Proper feedback after interaction.
+
+### Cards
+
+Introduce subtle selection movement, highlights and well-designed hover responses.
+
+### Numbers
+
+Where appropriate, animate resource changes and progression counters.
+
+### Rewards
+
+Make coin collection, upgrades, reward claims and level progression satisfying.
+
+### Vehicles
+
+Use subtle movement in menus and more expressive movement during gameplay.
+
+IMPORTANT:
+
+Do not animate everything continuously.
+
+Use animations to establish hierarchy and communicate important events.
+
+Support reduced-motion preferences.
+
+# 16. AUDIO DESIGN
+
+The existing Web Audio implementation is valuable.
+
+Preserve it and improve it where necessary.
+
+Develop a richer sound experience:
+
+- Engine idle.
+- Engine acceleration.
+- Gear shifts.
+- Tyre traction.
+- Skidding.
+- Suspension impacts.
+- Landings.
+- Coins.
+- Fuel.
+- Nitro.
+- Crashes.
+- UI clicks.
+- Reward effects.
+
+Make sounds responsive to actual game events.
+
+Provide separate audio controls and ensure the browser's audio restrictions are respected.
+
+Do not introduce background music that cannot be controlled or muted.
+
+# 17. ART ASSETS AND VISUAL PRODUCTION
+
+Use the attached image as an art-direction reference.
+
+If Google AI Studio's available image-generation capabilities can be used, generate original, consistent, high-quality artwork for:
+
+- Main-menu environmental key art.
+- Individual biome preview artwork.
+- Vehicle promotional artwork.
+- Upgrade component illustrations.
+- Store product artwork.
+- Seasonal promotional panels.
+
+Create assets that belong to the same visual universe.
+
+Keep the assets local to the project.
+
+Optimise large images appropriately using formats such as WebP or AVIF where supported.
+
+Do not depend on unstable external image URLs.
+
+Do not use random internet images as a substitute for a coherent art direction.
+
+If image generation is unavailable, improve the existing procedural assets and Three.js scenes rather than using generic placeholders.
+
+The actual playable environment and vehicle must remain interactive 3D content.
+
+# 18. TECHNICAL ARCHITECTURE — NON-NEGOTIABLE REQUIREMENTS
+
+This is a redesign and engineering improvement of an existing game, not permission to replace everything.
+
+## Preserve the current technology foundation
+
+Use the existing:
+
+- React.
+- TypeScript.
+- Vite.
+- Tailwind CSS.
+- Three.js.
+- Lucide React.
+- Motion.
+- Web Audio API.
+
+You may introduce additional libraries only when they solve a real problem and are compatible with the existing project.
+
+Do not introduce a massive dependency stack unnecessarily.
+
+## Preserve the game engine architecture
+
+The Three.js rendering system must remain separate from ordinary React UI rendering.
+
+Retain the separation between:
+
+- Application state.
+- User interface.
+- Three.js rendering.
+- Vehicle models.
+- Physics simulation.
+- Terrain generation.
+- Save persistence.
+- Audio.
+
+The existing `WorldSceneController` is an important architectural component.
+
+Do not migrate the entire rendering system to another engine without a compelling technical reason.
+
+Do not unnecessarily rewrite `HillClimbPhysics`.
+
+Preserve its fixed-step 180 Hz simulation and verify its accumulator behaviour.
+
+Preserve the imperative GameplayHud update mechanism.
+
+Do not cause React components to rerender every frame simply to update speed, distance and RPM.
+
+Use React state for screen-level state and direct references or suitable imperative updates for high-frequency telemetry.
+
+Avoid unnecessary allocations in animation loops.
+
+## Three.js performance
+
+Improve visual quality without destroying browser performance.
+
+Use:
+
+- InstancedMesh for repeated objects where appropriate.
+- Object pooling.
+- Reusable geometries and materials.
+- Efficient texture management.
+- Camera frustum culling.
+- Appropriate shadow settings.
+- Adaptive pixel ratios.
+- Sensible draw-call counts.
+- Resource disposal.
+- Efficient particle management.
+
+Avoid creating and destroying expensive resources every frame.
+
+Ensure geometries, materials and textures that are no longer needed are properly disposed of.
+
+Do not load all high-resolution assets at once when they are not needed.
+
+## Graphics quality tiers
+
+Implement an adaptive graphics system.
+
+Suggested tiers:
+
+HIGH:
+- Higher render resolution.
+- Richer shadows.
+- More environmental detail.
+- More particles.
+- Higher-quality lighting.
+
+MEDIUM:
+- Balanced shadows.
+- Moderate particle count.
+- Reduced environmental detail.
+- Appropriate resolution scaling.
+
+LOW:
+- Reduced render resolution.
+- Simplified shadows.
+- Fewer particles.
+- Reduced expensive effects.
+
+AUTO:
+- Detect suitable graphics capabilities.
+- Select a suitable rendering configuration.
+- Adapt reasonably when performance deteriorates.
+
+Preserve the existing software-renderer safeguard and improve it where appropriate.
+
+The game must remain usable on hardware that is not equipped with a powerful dedicated GPU.
+
+# 19. RESPONSIVENESS AND INPUT SUPPORT
+
+The target is a browser game, not just a desktop-only screenshot.
+
+Support:
+
+- Large desktop displays.
+- Standard laptops.
+- Smaller laptop displays.
+- Landscape tablets.
+- Mobile devices.
+
+Use responsive constraints rather than simply shrinking the desktop interface.
+
+Menus and gameplay must adapt intelligently to different aspect ratios.
+
+For mobile gameplay, prioritise landscape presentation and provide a clear rotate-device guidance screen when a portrait layout would compromise the gameplay experience.
+
+Provide safe-area spacing for devices with rounded corners and system indicators.
+
+### Desktop controls
+
+Preserve and verify the existing controls:
+
+- D / Arrow Right: Gas.
+- A / Arrow Left: Brake and reverse.
+- Shift: Nitro.
+- Space: Handbrake.
+- P / Escape: Pause.
+- R: Restart.
+- M: Mute.
+
+### Touch controls
+
+Ensure:
+
+- Large usable pedal areas.
+- Reliable pointer capture.
+- Correct release behaviour.
+- Proper pointer-cancel handling.
+- No stuck acceleration or braking.
+- Visual pressed states.
+- Comfortable thumb positioning.
+
+### Game controllers
+
+Where practical, introduce standard gamepad support with an appropriate button mapping and clear controller prompts.
+
+### Important CSS consideration
+
+Audit the current global `touch-action: none` behaviour.
+
+Do not unnecessarily disable scrolling and browser interactions throughout the entire application.
+
+Scope touch restrictions to the actual gameplay and control surfaces.
+
+Allow normal interaction with menus, settings and scrollable panels.
+
+Review the viewport configuration so that usability and accessibility are not unnecessarily restricted.
+
+# 20. ACCESSIBILITY AND GENERAL USABILITY
+
+Build a usable game interface.
+
+Ensure:
+
+- Sufficient contrast.
+- Readable text.
+- Clear focus indicators.
+- Accessible button labels.
+- Keyboard navigation.
+- Distinguishable selected and disabled states.
+- Proper confirmation for destructive actions.
+- Reduced-motion support.
+- Control feedback that is not communicated through colour alone.
+
+Touch targets should generally be at least 44 × 44 CSS pixels for important controls.
+
+Do not sacrifice usability for visual effects.
+
+# 21. SAVE DATA AND FUNCTIONAL INTEGRITY
+
+Preserve the current local save system.
+
+The existing storage key is:
+
+`hcr3_frontier_save_v1`
+
+Do not silently reset existing user progress.
+
+Preserve:
+
+- Currency.
+- Selected vehicle.
+- Selected stage.
+- Vehicle unlocks.
+- Paint.
+- Wheels.
+- Upgrade levels.
+- Stage records.
+- Mission progress.
+- Claimed rewards.
+- Boosters.
+- Tuning settings.
+- Audio preferences.
+
+If you change the save structure, implement a backward-compatible migration.
+
+Use safe defaults for missing or invalid data.
+
+Do not introduce a mandatory login system.
+
+Do not pretend an online leaderboard, multiplayer system or cloud-save backend exists if it has not actually been implemented.
+
+Keep the game fully playable without a backend.
+
+# 22. CODE QUALITY AND SECURITY
+
+This is an existing production-deployed Vite application.
+
+Keep the existing deployment architecture compatible with Vercel.
+
+Maintain clean component boundaries.
+
+Use reusable components and shared design tokens.
+
+Avoid:
+
+- Unnecessary duplicated components.
+- Large monolithic React components.
+- TypeScript errors.
+- Unhandled promise rejections.
+- Memory leaks.
+- Event listeners that are not cleaned up.
+- Broken asset paths.
+- Hardcoded fake data.
+- Dead buttons.
+- Placeholder screens.
+- Unimplemented controls.
+- Unnecessary global event listeners.
+- Secrets exposed in frontend code.
+
+Do not remove important existing configurations from `vite.config.ts`, particularly the asset-copying behaviour and the AI Studio HMR safeguards, without understanding their purpose.
+
+Do not add backend infrastructure or external API dependencies unless a genuinely necessary feature requires them.
+
+# 23. EXECUTION STRATEGY
+
+Work systematically.
+
+Do not stop after producing a design document.
+
+You must actually implement the transformation in the existing repository.
+
+### Phase 1 — Repository audit
+
+Inspect the complete codebase.
+
+Identify the current screen structure, data flow, physics, graphics architecture, dependencies, assets and known limitations.
+
+Write down an implementation plan internally or in a concise project document.
+
+Identify the highest-impact visual and technical problems.
+
+### Phase 2 — Establish the design system
+
+Implement:
+
+- Global colour tokens.
+- Typography.
+- Panel styles.
+- Button system.
+- Icons.
+- Animation conventions.
+- Responsive layout foundations.
+
+Make the design consistent across all screens.
+
+### Phase 3 — Rebuild the high-impact screens
+
+Prioritise:
+
+1. Main menu.
+2. Garage.
+3. Gameplay HUD.
+4. World map.
+5. Upgrades.
+6. Shop.
+7. Missions and events.
+8. Tuning.
+9. Pause and game-over.
+10. Settings and onboarding.
+
+Make sure all screens use the same design language.
+
+### Phase 4 — Improve the 3D presentation
+
+Improve:
+
+- Main-menu environment.
+- Vehicle presentation.
+- Garage.
+- Individual biomes.
+- Environmental details.
+- Lighting and shadows.
+- Particles.
+- Camera behaviour.
+
+Use the existing 3D systems as the foundation.
+
+### Phase 5 — Interaction and polish
+
+Implement the transitions, button states, gameplay feedback, responsive layouts, accessibility and sound improvements.
+
+Verify every action against the actual game state.
+
+### Phase 6 — Test and optimise
+
+Run the actual application.
+
+Check for:
+
+- TypeScript errors.
+- Build errors.
+- Console errors.
+- Missing assets.
+- Broken interactions.
+- Layout overflow.
+- Incorrect save handling.
+- Performance problems.
+- WebGL context issues.
+- Input problems.
+
+Fix the problems you discover.
+
+# 24. REQUIRED QUALITY ASSURANCE
+
+Execute the existing project scripts.
+
+At minimum:
+
+`npm run lint`
+
+`npm run build`
+
+Start the development server and test the live application preview.
+
+Inspect all major screens rather than relying on a successful build as proof of visual quality.
+
+Test the following screen dimensions:
+
+- 1920 × 1080.
+- 1600 × 900.
+- 1440 × 900.
+- 1366 × 768.
+- Landscape tablet.
+- Mobile landscape.
+- Mobile portrait handling.
+
+Test these complete user journeys:
+
+1. Launch game → main menu → play → drive → collect rewards → crash → result screen → retry.
+2. Main menu → garage → select vehicle → change paint → change wheels → purchase upgrade.
+3. Main menu → world map → select environment → start race.
+4. Main menu → shop → claim an available free reward → purchase an in-game item.
+5. Main menu → missions → claim a completed reward.
+6. Garage → tuning → change a parameter → play and verify its effect.
+7. Gameplay → pause → resume.
+8. Gameplay → pause → restart.
+9. Reload application → verify previous progress is preserved.
+
+Test both keyboard and touch input where the environment supports them.
+
+Ensure gameplay continues to function after opening and closing different menu screens.
+
+Verify that the WebGL renderer is properly cleaned up when appropriate.
+
+If browser visual inspection or screenshot capture is available, use it to inspect the actual result and correct visual inconsistencies.
+
+# 25. DEFINITION OF DONE
+
+The project is only complete when all these conditions are satisfied:
+
+1. The existing game still works.
+2. The design is dramatically more sophisticated than the previous implementation.
+3. The main menu has a strong cinematic presentation.
+4. The garage feels like a premium vehicle showroom.
+5. Vehicles look substantially better.
+6. Every biome has a distinctive and attractive identity.
+7. Gameplay has a refined, readable and immersive HUD.
+8. The world map feels like an actual adventure map.
+9. Upgrades and shop screens are professionally designed.
+10. All interactive elements work.
+11. Existing progression is preserved.
+12. The application is responsive.
+13. Rendering remains reasonably efficient.
+14. The project passes its TypeScript check.
+15. The project builds successfully for production.
+16. The Vercel-compatible deployment architecture is preserved.
+17. There are no placeholder interfaces pretending to be completed features.
+
+# 26. FINAL CREATIVE INSTRUCTION
+
+I do not want an ordinary redesign.
+
+I want you to demonstrate the creativity, technical ability and visual judgment of an experienced game studio.
+
+Do not simply apply a dark theme and call it modern.
+
+Do not make every component a rounded rectangle.
+
+Do not put a collection of glowing buttons over a basic 3D background.
+
+Do not prioritise decoration over usability.
+
+Do not replace working game systems with static mockups.
+
+Think about how every screen, animation, vehicle, environment, control, sound and reward contributes to the player's experience.
+
+Look at the reference image and understand its composition, but push considerably further.
+
+Make the interface feel intentional.
+
+Make the vehicles feel desirable.
+
+Make the environments feel like places worth exploring.
+
+Make the garage feel exciting.
+
+Make the controls feel tactile.
+
+Make the rewards feel satisfying.
+
+Make the overall game feel like a cohesive, premium, finished product.
+
+Be creative beyond this specification, but keep every improvement technically achievable, functionally connected and consistent with the existing project.
+
+**DO NOT RETURN ONLY A PLAN, DESIGN DESCRIPTION OR COLLECTION OF SUGGESTIONS. IMPLEMENT THE ACTUAL CHANGES IN THE EXISTING PROJECT, TEST THEM, FIX THE PROBLEMS AND DELIVER THE COMPLETED TRANSFORMATION.**
+
+Your objective is to make someone open the game, look at the screen and immediately think:
+
+"THIS IS A PROPER GAME."

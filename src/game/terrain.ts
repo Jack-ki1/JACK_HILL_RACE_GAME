@@ -42,7 +42,8 @@ export function getBridgeInfo(
   if (!stage.hasBridges || stage.bridgeInterval <= 0) {
     return { active: false, startX: 0, length: 0, s: 0 };
   }
-  const firstBridge = stage.id === 'red_canyon' ? 145 : 260;
+  const firstBridge =
+    stage.id === 'red_canyon' ? 145 : stage.id === 'vice_coast' ? 210 : 260;
   if (x < firstBridge) {
     return { active: false, startX: 0, length: 0, s: 0 };
   }
@@ -61,12 +62,57 @@ export function getBridgeInfo(
   return { active: false, startX: 0, length: 0, s: 0 };
 }
 
+export function getWaterCrossingInfo(
+  _x: number,
+  _stage: StageConfig,
+): { active: boolean; startX: number; length: number; s: number; waterY: number } {
+  return { active: false, startX: 0, length: 0, s: 0, waterY: -999 };
+}
+
+export function getTunnelInfo(
+  x: number,
+  stage: StageConfig,
+): { active: boolean; startX: number; length: number; s: number; ceilingY: number } {
+  if (!stage.hasTunnels) {
+    return { active: false, startX: 0, length: 0, s: 0, ceilingY: 999 };
+  }
+  const firstTunnel = 335;
+  if (x < firstTunnel) {
+    return { active: false, startX: 0, length: 0, s: 0, ceilingY: 999 };
+  }
+  const interval = 315;
+  const length = 28;
+  const offset = x - firstTunnel;
+  const mod = ((offset % interval) + interval) % interval;
+  if (mod < length) {
+    const startX = x - mod;
+    if (
+      getBridgeInfo(startX - 4, stage).active ||
+      getBridgeInfo(startX + length + 4, stage).active
+    ) {
+      return { active: false, startX: 0, length: 0, s: 0, ceilingY: 999 };
+    }
+    let maxFloor = -Infinity;
+    for (let k = 0; k <= 4; k++) {
+      maxFloor = Math.max(maxFloor, sampleBaseGroundHeightRaw(startX + (k / 4) * length, stage));
+    }
+    return {
+      active: true,
+      startX,
+      length,
+      s: mod / length,
+      ceilingY: maxFloor + 5.2,
+    };
+  }
+  return { active: false, startX: 0, length: 0, s: 0, ceilingY: 999 };
+}
+
 /**
  * Base organic terrain height in meters (Y-up).
  * Smooth C1-continuous waves, launchpad flattening, progressive climbing ramps,
  * and stage-specific signature features (canyon gorges, lunar crater bowls, frost peaks).
  */
-export function sampleBaseGroundHeight(x: number, stage: StageConfig): number {
+function sampleBaseGroundHeightRaw(x: number, stage: StageConfig): number {
   const dist = Math.max(0, x - START_X);
   // Smooth launchpad around start so spawn is level and stable
   const launchBlend = smoothstep((dist - 10) / 35);
@@ -123,6 +169,10 @@ export function sampleBaseGroundHeight(x: number, stage: StageConfig): number {
   return y;
 }
 
+export function sampleBaseGroundHeight(x: number, stage: StageConfig): number {
+  return sampleBaseGroundHeightRaw(x, stage);
+}
+
 export function sampleDriveHeight(x: number, stage: StageConfig): number {
   const br = getBridgeInfo(x, stage);
   if (br.active) {
@@ -158,6 +208,9 @@ export function getSurfaceAt(x: number, stage: StageConfig): { surface: SurfaceT
       return { surface: 'rock', muMult: 1.05 };
     }
     return { surface: 'dirt', muMult: 0.94 };
+  }
+  if (stage.id === 'vice_coast') {
+    return { surface: 'asphalt', muMult: 1.08 };
   }
   if (stage.id === 'moon') {
     return { surface: 'regolith', muMult: 0.96 };

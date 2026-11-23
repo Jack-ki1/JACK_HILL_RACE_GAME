@@ -1,6 +1,7 @@
 import {
   CollectibleSpawn,
   getCollectibleForSlot,
+  getTunnelInfo,
   sampleTerrain,
   TerrainSample,
 } from './terrain';
@@ -55,6 +56,9 @@ export interface VehiclePhysicsState {
   rotF: number;
   groundedR: boolean;
   groundedF: boolean;
+  inWater: boolean;
+  inTunnel: boolean;
+  waterDepth: number;
   throttle: number;
   rpm: number;
   gear: number;
@@ -88,6 +92,7 @@ export class HillClimbPhysics {
   private fuelSaverActive = false;
   private nitroBoosterActive = false;
   private magnetActive = false;
+  private hasSnorkel = false;
   private lowSpeedFuelTimer = 0;
   private headContactTimer = 0;
   private particleAccum = 0;
@@ -132,6 +137,13 @@ export class HillClimbPhysics {
       }
     }
 
+    this.hasSnorkel = Boolean(
+      save.vehicleAccessories?.[vehicle.id]?.includes('snorkel'),
+    );
+    if (this.hasSnorkel) {
+      // Raised ram-air snorkel improves high-RPM desert/trail breathing slightly
+    }
+
     this.recomputeParams();
     this.state = this.createInitialState();
   }
@@ -143,7 +155,16 @@ export class HillClimbPhysics {
     const s = this.stage;
 
     this.mass = 1.0;
-    this.inertia = v.id === 'superbike' ? 1.1 : v.id === 'monster' ? 2.1 : 1.65;
+    this.inertia =
+      v.id === 'superbike'
+        ? 1.1
+        : v.id === 'monster'
+          ? 2.1
+          : v.id === 'cheetah_vc'
+            ? 1.5
+            : v.id === 'donk_leonida'
+              ? 1.78
+              : 1.65;
     this.engineTorque =
       23.5 * v.powerMult * (1 + 0.08 * u.engine) * t.enginePower;
     this.topSpeed = v.topSpeedMs * (1 + 0.045 * u.engine) * (0.85 + 0.15 * t.enginePower);
@@ -185,6 +206,9 @@ export class HillClimbPhysics {
       rotF: 0,
       groundedR: true,
       groundedF: true,
+      inWater: false,
+      inTunnel: false,
+      waterDepth: 0,
       throttle: 0,
       rpm: 0.18,
       gear: 1,
@@ -212,6 +236,21 @@ export class HillClimbPhysics {
 
   public isSlotCollected(slot: number): boolean {
     return this.collectedSlots.has(slot);
+  }
+
+  public getNextFuelDistanceMeters(): number | null {
+    const curSlot = Math.max(4, Math.floor((this.state.x - START_X) / 6.5));
+    // Search next few fuel slots (every slot % 17 === 12)
+    let nextSlot = curSlot + ((12 - (curSlot % 17) + 17) % 17);
+    if (nextSlot < 12) nextSlot = 12;
+    for (let k = 0; k < 4; k++) {
+      const candidate = nextSlot + k * 17;
+      if (!this.collectedSlots.has(candidate)) {
+        const fx = START_X + candidate * 6.5;
+        return Math.max(0, Math.round(fx - this.state.x));
+      }
+    }
+    return null;
   }
 
   public getWheelWorldPosition(isFront: boolean): { x: number; y: number } {
@@ -538,6 +577,40 @@ export class HillClimbPhysics {
     } else {
       s.wheelieTime = 0;
       this.wheelieRewardStep = 0;
+    }
+
+    s.inWater = false;
+    s.waterDepth = 0;
+
+    // Cave Tunnel ceiling clearance check
+    const tunnel = getTunnelInfo(s.x, this.stage);
+    s.inTunnel = tunnel.active;
+    if (tunnel.active) {
+      const roofY = s.y + v.headY + 0.35;
+      if (roofY > tunnel.ceilingY) {
+        const roofPen = roofY - tunnel.ceilingY;
+        s.y -= roofPen * 0.85;
+        s.vy = Math.min(-1.2, -Math.abs(s.vy) * 0.45);
+        s.omega *= 0.4;
+        s.shakeIntensity = Math.max(s.shakeIntensity, 0.45);
+        for (let sp = 0; sp < 4; sp++) {
+          this.cb.onParticle({
+            kind: 'spark',
+            x: s.x + (Math.random() - 0.5) * 1.1,
+            y: tunnel.ceilingY - 0.1,
+            z: (Math.random() - 0.5) * 1.0,
+            vx: (Math.random() - 0.5) * 5,
+            vy: -2 - Math.random() * 3,
+            vz: (Math.random() - 0.5) * 2.5,
+            size: 0.16,
+            life: 0.35,
+          });
+        }
+        if (Math.cos(s.angle) < -0.25 && roofPen > 0.22) {
+          this.triggerCrash('Tunnel Ceiling Crash!');
+          return;
+        }
+      }
     }
 
     // Integrate linear & angular motion

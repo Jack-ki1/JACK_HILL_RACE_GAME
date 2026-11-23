@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+:root {
+  --surface-obsidian: #080d13;
+  --surface-graphite: #111923;
+  --surface-steel: #1b2733;
+  --accent-yellow: #ffc52e;
+  --accent-cyan: #27c9f4;
+  --accent-green: #73d66a;
+  --accent-violet: #a66bff;
+}
+
 @layer base {
   html,
   body,
@@ -9,15 +19,27 @@
     margin: 0;
     padding: 0;
     overflow: hidden;
+    background-color: var(--surface-obsidian);
     font-family: 'Outfit', system-ui, -apple-system, sans-serif;
-    touch-action: none;
+    touch-action: manipulation;
     -webkit-user-select: none;
     user-select: none;
   }
+
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--accent-cyan);
+    outline-offset: 2px;
+  }
+}
+
+.touch-gameplay {
+  touch-action: none;
 }
 
 .font-display {
-  font-family: 'Chakra Petch', 'Outfit', system-ui, sans-serif;
+  font-family: 'Barlow Condensed', 'Outfit', system-ui, sans-serif;
 }
 
 .font-mono-num {
@@ -29,6 +51,22 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Sharp metallic bezel & gauge housing styles */
+.panel-bevel {
+  background: linear-gradient(180deg, rgba(17, 25, 35, 0.95) 0%, rgba(8, 13, 19, 0.97) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 10px 26px rgba(0, 0, 0, 0.58);
+}
+
+.panel-steel {
+  background: linear-gradient(180deg, rgba(27, 39, 51, 0.92) 0%, rgba(14, 21, 30, 0.96) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+.hud-dial {
+  background: radial-gradient(circle at 50% 30%, #1c2536 0%, #0b101b 70%, #06090f 100%);
+  box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.14), inset 0 -4px 10px rgba(0, 0, 0, 0.8), 0 8px 20px rgba(0, 0, 0, 0.7);
+}
+
 /* Tactile perforated aluminum pedal texture */
 .pedal-metal {
   background-color: #cbd5e1;
@@ -37,6 +75,7 @@
     linear-gradient(180deg, #f1f5f9 0%, #cbd5e1 45%, #94a3b8 100%);
   background-size: 22px 22px, 100% 100%;
   background-position: 6px 6px, 0 0;
+  touch-action: none;
 }
 
 .pedal-metal-active {
@@ -46,9 +85,15 @@
     linear-gradient(180deg, #cbd5e1 0%, #94a3b8 60%, #64748b 100%);
   background-size: 22px 22px, 100% 100%;
   background-position: 6px 6px, 0 0;
+  touch-action: none;
 }
 
 /* Custom thin scrollbar for modal carousels/lists */
+.frontier-scroll {
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
 .frontier-scroll::-webkit-scrollbar {
   height: 6px;
   width: 6px;
@@ -60,4 +105,15 @@
 .frontier-scroll::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.45);
   border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

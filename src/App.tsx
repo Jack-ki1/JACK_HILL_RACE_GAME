@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { MotionConfig } from 'motion/react';
 import { GameOverModal, PauseModal } from './components/PauseAndGameOverModal';
 import { GameplayHud, GameplayHudHandle } from './components/GameplayHud';
 import { GarageModal } from './components/GarageModal';
 import { MissionsModal } from './components/MissionsModal';
+import {
+  FirstRunTutorialOverlay,
+  PortraitOrientationBanner,
+} from './components/OnboardingAndOrientation';
+import { SettingsModal } from './components/SettingsModal';
 import { ShopActionResult, ShopModal } from './components/ShopModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { TuningModal } from './components/TuningModal';
@@ -10,6 +16,7 @@ import { UpgradesModal } from './components/UpgradesModal';
 import { WorldMapModal } from './components/WorldMapModal';
 import { SoundEngine } from './game/audio';
 import {
+  ACCESSORY_DEFS,
   getStageById,
   getUpgradeCost,
   getVehicleById,
@@ -29,13 +36,17 @@ import {
 import { WorldSceneController } from './game/worldScene';
 import {
   GameScreen,
+  GameSettings,
   InputState,
+  LiveryId,
+  NeonColorId,
   RunSummary,
   SaveData,
   StageId,
   StuntCallout,
   TuningConfig,
   UpgradeKey,
+  VehicleAccessoryId,
   VehicleId,
   WheelStyleId,
 } from './types/game';
@@ -49,8 +60,18 @@ export default function App() {
   const [save, setSave] = useState<SaveData>(() => loadSaveData());
   const [screen, setScreen] = useState<GameScreen>('TITLE_MENU');
   const [returnScreen, setReturnScreen] = useState<'TITLE_MENU' | 'PAUSED' | 'GAME_OVER'>('TITLE_MENU');
+  const [missionsTab, setMissionsTab] = useState<'MISSIONS' | 'SEASON'>('MISSIONS');
+  const [garageInitialVehicle, setGarageInitialVehicle] = useState<VehicleId | undefined>(undefined);
   const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
   const [contextLost, setContextLost] = useState(false);
+  const [gamepadActive, setGamepadActive] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.innerHeight > window.innerWidth &&
+      window.innerWidth < 820,
+  );
+  const [portraitDismissed, setPortraitDismissed] = useState(false);
 
   const saveRef = useRef(save);
   const screenRef = useRef(screen);
@@ -62,6 +83,10 @@ export default function App() {
     saveRef.current = save;
     persistSaveData(save);
     soundRef.current?.setMuted(save.muted);
+    soundRef.current?.setVolumes(save.settings.masterVolume, save.settings.sfxVolume);
+    worldRef.current?.applyGraphicsQuality(save.settings.graphicsQuality);
+    worldRef.current?.setCameraShakeMode(save.settings.cameraShake);
+    worldRef.current?.setShowGhost(save.settings.showGhost);
   }, [save]);
 
   useEffect(() => {
@@ -87,6 +112,10 @@ export default function App() {
   useEffect(() => {
     const sound = new SoundEngine();
     sound.setMuted(saveRef.current.muted);
+    sound.setVolumes(
+      saveRef.current.settings.masterVolume,
+      saveRef.current.settings.sfxVolume,
+    );
     soundRef.current = sound;
 
     const mount = worldMountRef.current;
@@ -120,6 +149,8 @@ export default function App() {
           hudRef.current?.updateLive({
             distanceMeters: dist,
             bestMeters: Math.floor(curSave.stageBests[curSave.selectedStage] ?? 0),
+            nextFuelMeters: physics.getNextFuelDistanceMeters(),
+            ghostDeltaMeters: null,
             fuelPct: s.fuel,
             runCoins: s.runCoins,
             totalCoins: curSave.coins,
@@ -130,6 +161,8 @@ export default function App() {
             nitroEnergy: s.nitroEnergy,
             gear: s.gear,
             airborne: !s.groundedR && !s.groundedF,
+            inWater: false,
+            inTunnel: s.inTunnel,
             callout: stuntRef.current,
           });
         } else {
@@ -143,11 +176,17 @@ export default function App() {
     const initialStage = getStageById(initialSave.selectedStage);
     const initialVehicle = getVehicleById(initialSave.selectedVehicle);
     world.applyStageEnvironment(initialStage);
+    world.applyGraphicsQuality(initialSave.settings.graphicsQuality);
+    world.setCameraShakeMode(initialSave.settings.cameraShake);
+    world.setShowGhost(initialSave.settings.showGhost);
     world.rebuildVehicleModel(
       initialVehicle,
       initialSave.vehiclePaints[initialVehicle.id] || initialVehicle.defaultPaintId,
       initialSave.vehicleWheels[initialVehicle.id] || 'steel',
       initialStage.headlightsOn,
+      initialSave.vehicleAccessories?.[initialVehicle.id] ?? ['lightbar'],
+      initialSave.vehicleNeons?.[initialVehicle.id] ?? 'off',
+      initialSave.vehicleLiveries?.[initialVehicle.id] ?? 'clean',
     );
     world.setMode('TITLE');
 
@@ -176,6 +215,9 @@ export default function App() {
         save.vehiclePaints[vehicle.id] || vehicle.defaultPaintId,
         save.vehicleWheels[vehicle.id] || 'steel',
         stage.headlightsOn,
+        save.vehicleAccessories?.[vehicle.id] ?? ['lightbar'],
+        save.vehicleNeons?.[vehicle.id] ?? 'off',
+        save.vehicleLiveries?.[vehicle.id] ?? 'clean',
       );
     }
   }, [
@@ -184,6 +226,9 @@ export default function App() {
     save.selectedVehicle,
     save.vehiclePaints,
     save.vehicleWheels,
+    save.vehicleAccessories,
+    save.vehicleNeons,
+    save.vehicleLiveries,
   ]);
 
   const startRace = useCallback((stageOverride?: StageId) => {
@@ -402,7 +447,8 @@ export default function App() {
           cur === 'WORLD_MAP' ||
           cur === 'SHOP' ||
           cur === 'MISSIONS' ||
-          cur === 'TUNING'
+          cur === 'TUNING' ||
+          cur === 'SETTINGS'
         ) {
           setScreen(returnScreen);
         }
@@ -444,6 +490,159 @@ export default function App() {
     };
   }, [pauseRace, resumeRace, returnScreen, startRace, toggleMute]);
 
+  // Portrait viewport check for mobile gameplay hint
+  useEffect(() => {
+    const checkOrientation = () => {
+      const portrait =
+        window.innerHeight > window.innerWidth && window.innerWidth < 820;
+      setIsPortrait(portrait);
+      if (!portrait) {
+        setPortraitDismissed(false);
+      }
+    };
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
+    return () => {
+      window.removeEventListener('resize', checkOrientation);
+      window.removeEventListener('orientationchange', checkOrientation);
+    };
+  }, []);
+
+  // Standard Gamepad polling (RT/LT/A/X/RB/B/Y/Start) without overriding keyboard/touch
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+
+    let rafId = 0;
+    const prevPad = {
+      gas: false,
+      brake: false,
+      nitro: false,
+      handbrake: false,
+      start: false,
+    };
+
+    const syncConnection = () => {
+      const pads = navigator.getGamepads();
+      const hasPad = Array.from(pads).some((p) => Boolean(p && p.connected));
+      setGamepadActive(hasPad);
+    };
+
+    const releasePadInputs = () => {
+      const reset: Partial<InputState> = {};
+      if (prevPad.gas) {
+        prevPad.gas = false;
+        reset.gas = false;
+      }
+      if (prevPad.brake) {
+        prevPad.brake = false;
+        reset.brake = false;
+      }
+      if (prevPad.nitro) {
+        prevPad.nitro = false;
+        reset.nitro = false;
+      }
+      if (prevPad.handbrake) {
+        prevPad.handbrake = false;
+        reset.handbrake = false;
+      }
+      if (Object.keys(reset).length > 0) {
+        worldRef.current?.setInput(reset);
+      }
+    };
+
+    const poll = () => {
+      const pads = navigator.getGamepads();
+      const pad = Array.from(pads).find((p) => Boolean(p && p.connected)) ?? null;
+
+      if (pad) {
+        const cur = screenRef.current;
+        const startPressed = Boolean(pad.buttons[9]?.pressed);
+        if (startPressed && !prevPad.start) {
+          if (cur === 'PLAYING') {
+            pauseRace();
+          } else if (cur === 'PAUSED') {
+            resumeRace();
+          }
+        }
+        prevPad.start = startPressed;
+
+        if (cur === 'PLAYING') {
+          const stickX = pad.axes[0] ?? 0;
+          const nextGas = Boolean(
+            (pad.buttons[7]?.value ?? 0) > 0.25 ||
+              pad.buttons[7]?.pressed ||
+              pad.buttons[0]?.pressed ||
+              stickX > 0.45,
+          );
+          const nextBrake = Boolean(
+            (pad.buttons[6]?.value ?? 0) > 0.25 ||
+              pad.buttons[6]?.pressed ||
+              pad.buttons[2]?.pressed ||
+              stickX < -0.45,
+          );
+          const nextNitro = Boolean(
+            pad.buttons[5]?.pressed || pad.buttons[1]?.pressed,
+          );
+          const nextHandbrake = Boolean(
+            pad.buttons[3]?.pressed || pad.buttons[4]?.pressed,
+          );
+
+          const diff: Partial<InputState> = {};
+          if (nextGas !== prevPad.gas) {
+            prevPad.gas = nextGas;
+            diff.gas = nextGas;
+          }
+          if (nextBrake !== prevPad.brake) {
+            prevPad.brake = nextBrake;
+            diff.brake = nextBrake;
+          }
+          if (nextNitro !== prevPad.nitro) {
+            prevPad.nitro = nextNitro;
+            diff.nitro = nextNitro;
+          }
+          if (nextHandbrake !== prevPad.handbrake) {
+            prevPad.handbrake = nextHandbrake;
+            diff.handbrake = nextHandbrake;
+          }
+          if (Object.keys(diff).length > 0) {
+            soundRef.current?.unlock();
+            worldRef.current?.setInput(diff);
+          }
+        } else {
+          releasePadInputs();
+        }
+        rafId = requestAnimationFrame(poll);
+      } else {
+        prevPad.start = false;
+        releasePadInputs();
+        rafId = 0;
+      }
+    };
+
+    const startPolling = () => {
+      syncConnection();
+      if (!rafId) {
+        rafId = requestAnimationFrame(poll);
+      }
+    };
+
+    syncConnection();
+    const initialPads = navigator.getGamepads();
+    if (Array.from(initialPads).some((p) => Boolean(p && p.connected))) {
+      rafId = requestAnimationFrame(poll);
+    }
+
+    window.addEventListener('gamepadconnected', startPolling);
+    window.addEventListener('gamepaddisconnected', syncConnection);
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      releasePadInputs();
+      window.removeEventListener('gamepadconnected', startPolling);
+      window.removeEventListener('gamepaddisconnected', syncConnection);
+    };
+  }, [pauseRace, resumeRace]);
+
   // Garage / Upgrades / Shop / Missions callbacks
   const handleSelectVehicle = (id: VehicleId) => {
     soundRef.current?.playClick();
@@ -474,6 +673,22 @@ export default function App() {
     }));
   };
 
+  const handleSetNeon = (vehicleId: VehicleId, neonId: NeonColorId) => {
+    soundRef.current?.playClick();
+    updateSave((prev) => ({
+      ...prev,
+      vehicleNeons: { ...prev.vehicleNeons, [vehicleId]: neonId },
+    }));
+  };
+
+  const handleSetLivery = (vehicleId: VehicleId, liveryId: LiveryId) => {
+    soundRef.current?.playClick();
+    updateSave((prev) => ({
+      ...prev,
+      vehicleLiveries: { ...prev.vehicleLiveries, [vehicleId]: liveryId },
+    }));
+  };
+
   const handleSelectOrUnlockWheel = (
     vehicleId: VehicleId,
     wheelId: WheelStyleId,
@@ -496,6 +711,37 @@ export default function App() {
       return {
         ...prev,
         vehicleWheels: { ...prev.vehicleWheels, [vehicleId]: wheelId },
+      };
+    });
+  };
+
+  const handleToggleOrUnlockAccessory = (
+    vehicleId: VehicleId,
+    accId: VehicleAccessoryId,
+  ) => {
+    const def = ACCESSORY_DEFS.find((a) => a.id === accId);
+    if (!def) return;
+    updateSave((prev) => {
+      const owned = prev.unlockedAccessories?.[accId] ?? false;
+      const curList = prev.vehicleAccessories?.[vehicleId] ?? [];
+      if (!owned) {
+        if (prev.coins < def.price) return prev;
+        soundRef.current?.playClick(true);
+        const nextList = curList.includes(accId) ? curList : [...curList, accId];
+        return {
+          ...prev,
+          coins: prev.coins - def.price,
+          unlockedAccessories: { ...prev.unlockedAccessories, [accId]: true },
+          vehicleAccessories: { ...prev.vehicleAccessories, [vehicleId]: nextList },
+        };
+      }
+      soundRef.current?.playClick();
+      const nextList = curList.includes(accId)
+        ? curList.filter((item) => item !== accId)
+        : [...curList, accId];
+      return {
+        ...prev,
+        vehicleAccessories: { ...prev.vehicleAccessories, [vehicleId]: nextList },
       };
     });
   };
@@ -553,6 +799,20 @@ export default function App() {
     return true;
   };
 
+  const handleExchangeCoinsForGems = (
+    coinCost: number,
+    gemGain: number,
+  ): boolean => {
+    if (saveRef.current.coins < coinCost) return false;
+    soundRef.current?.playClick(true);
+    updateSave((prev) =>
+      prev.coins >= coinCost
+        ? { ...prev, coins: prev.coins - coinCost, gems: prev.gems + gemGain }
+        : prev,
+    );
+    return true;
+  };
+
   const handleBuyStarterPack = (): ShopActionResult | null => {
     if (saveRef.current.gems < 25) return null;
     soundRef.current?.playStunt();
@@ -571,7 +831,7 @@ export default function App() {
         : prev,
     );
     return {
-      title: 'FRONTIER BUNDLE UNLOCKED!',
+      title: 'LEONIDA BUNDLE UNLOCKED!',
       detail: '+4,500 Coins and +1x Fuel Saver, Nitro Charge & Coin Magnet.',
     };
   };
@@ -673,183 +933,252 @@ export default function App() {
     worldRef.current?.getPhysics()?.recomputeParams();
   };
 
+  const handleUpdateSettings = (next: GameSettings) => {
+    updateSave((prev) => ({ ...prev, settings: next }));
+  };
+
   const activeStage = getStageById(save.selectedStage);
   const activeVehicle = getVehicleById(save.selectedVehicle);
 
   const openModalFrom = (
     target: Exclude<GameScreen, 'TITLE_MENU' | 'PLAYING' | 'PAUSED' | 'GAME_OVER'>,
     origin: 'TITLE_MENU' | 'PAUSED' | 'GAME_OVER' = 'TITLE_MENU',
+    nextMissionsTab?: 'MISSIONS' | 'SEASON',
+    inspectVehicleId?: VehicleId,
   ) => {
     soundRef.current?.unlock();
     soundRef.current?.playClick();
+    if (nextMissionsTab) {
+      setMissionsTab(nextMissionsTab);
+    }
+    if (target === 'GARAGE') {
+      setGarageInitialVehicle(inspectVehicleId);
+    }
     setReturnScreen(origin);
     setScreen(target);
   };
 
+  const handleTitleVehicleSelect = (id: VehicleId) => {
+    soundRef.current?.unlock();
+    if (save.unlockedVehicles[id]) {
+      handleSelectVehicle(id);
+    } else {
+      openModalFrom('GARAGE', 'TITLE_MENU', undefined, id);
+    }
+  };
+
   return (
-    <div className="relative h-full w-full overflow-hidden bg-slate-950 select-none">
-      {/* Isolated Full-Screen 3D WebGL2 Canvas Mount (Never add React children here) */}
-      <div ref={worldMountRef} className="absolute inset-0" />
+    <MotionConfig reducedMotion={save.settings.reducedMotion ? 'always' : 'user'}>
+      <div className="relative h-full w-full overflow-hidden bg-slate-950 select-none">
+        {/* Isolated Full-Screen 3D WebGL2 Canvas Mount (Never add React children here) */}
+        <div ref={worldMountRef} className="absolute inset-0" />
 
-      {/* Title Menu Overlay */}
-      {screen === 'TITLE_MENU' && (
-        <TitleOverlay
-          save={save}
-          stage={activeStage}
-          vehicle={activeVehicle}
-          onPlay={() => startRace()}
-          onOpenScreen={(s) => openModalFrom(s, 'TITLE_MENU')}
-          onToggleMute={toggleMute}
-        />
-      )}
+        {/* Title Menu Overlay */}
+        {screen === 'TITLE_MENU' && (
+          <TitleOverlay
+            save={save}
+            stage={activeStage}
+            vehicle={activeVehicle}
+            onPlay={() => startRace()}
+            onOpenScreen={(s, mTab) => openModalFrom(s, 'TITLE_MENU', mTab)}
+            onSelectVehicle={handleTitleVehicleSelect}
+            onToggleMute={toggleMute}
+          />
+        )}
 
-      {/* Active Gameplay HUD */}
-      {(screen === 'PLAYING' || screen === 'PAUSED') && (
-        <GameplayHud
-          ref={hudRef}
-          muted={save.muted}
-          stageName={activeStage.name}
-          onInputChange={handleInputChange}
-          onPause={pauseRace}
-          onToggleMute={toggleMute}
-        />
-      )}
+        {/* First-Run Driver Onboarding Briefing */}
+        {screen === 'TITLE_MENU' && !save.tutorialSeen && (
+          <FirstRunTutorialOverlay
+            onDismiss={() => {
+              soundRef.current?.playClick(true);
+              updateSave((prev) => ({ ...prev, tutorialSeen: true }));
+            }}
+          />
+        )}
 
-      {/* Pause Modal */}
-      {screen === 'PAUSED' && (
-        <PauseModal
-          stageName={activeStage.name}
-          onResume={resumeRace}
-          onRestart={() => startRace()}
-          onOpenGarage={() => openModalFrom('GARAGE', 'PAUSED')}
-          onGoHome={goHome}
-        />
-      )}
+        {/* Active Gameplay HUD */}
+        {(screen === 'PLAYING' || screen === 'PAUSED') && (
+          <GameplayHud
+            ref={hudRef}
+            muted={save.muted}
+            stageName={activeStage.name}
+            showHints={save.settings.showControlHints}
+            gamepadActive={gamepadActive}
+            onInputChange={handleInputChange}
+            onPause={pauseRace}
+            onToggleMute={toggleMute}
+          />
+        )}
 
-      {/* Game Over Modal */}
-      {screen === 'GAME_OVER' && runSummary && (
-        <GameOverModal
-          summary={runSummary}
-          onRetry={() => startRace()}
-          onOpenGarage={() => openModalFrom('GARAGE', 'GAME_OVER')}
-          onGoHome={goHome}
-        />
-      )}
+        {/* Non-blocking Portrait Orientation Tip */}
+        {screen === 'PLAYING' && isPortrait && !portraitDismissed && (
+          <PortraitOrientationBanner onDismiss={() => setPortraitDismissed(true)} />
+        )}
 
-      {/* Interactive 3D Garage Showroom */}
-      {screen === 'GARAGE' && (
-        <GarageModal
-          save={save}
-          onClose={() => {
-            soundRef.current?.playClick();
-            setScreen(returnScreen);
-          }}
-          onSelectVehicle={handleSelectVehicle}
-          onUnlockVehicle={handleUnlockVehicle}
-          onSetPaint={handleSetPaint}
-          onSelectOrUnlockWheel={handleSelectOrUnlockWheel}
-          onBuyUpgrade={handleBuyUpgrade}
-          onOpenUpgrades={() => openModalFrom('UPGRADES', returnScreen)}
-        />
-      )}
+        {/* Pause Modal */}
+        {screen === 'PAUSED' && (
+          <PauseModal
+            stageName={activeStage.name}
+            onResume={resumeRace}
+            onRestart={() => startRace()}
+            onOpenGarage={() => openModalFrom('GARAGE', 'PAUSED')}
+            onOpenSettings={() => openModalFrom('SETTINGS', 'PAUSED')}
+            onGoHome={goHome}
+          />
+        )}
 
-      {/* Mechanical Upgrades Screen */}
-      {screen === 'UPGRADES' && (
-        <UpgradesModal
-          save={save}
-          vehicle={activeVehicle}
-          onClose={() => {
-            soundRef.current?.playClick();
-            setScreen(returnScreen);
-          }}
-          onBuyUpgrade={handleBuyUpgrade}
-        />
-      )}
+        {/* Game Over Modal */}
+        {screen === 'GAME_OVER' && runSummary && (
+          <GameOverModal
+            summary={runSummary}
+            onRetry={() => startRace()}
+            onOpenGarage={() => openModalFrom('GARAGE', 'GAME_OVER')}
+            onGoHome={goHome}
+          />
+        )}
 
-      {/* World Map Stage Selector */}
-      {screen === 'WORLD_MAP' && (
-        <WorldMapModal
-          save={save}
-          onClose={() => {
-            soundRef.current?.playClick();
-            setScreen('TITLE_MENU');
-          }}
-          onSelectStage={(stageId) => {
-            soundRef.current?.playClick();
-            if (isStageUnlocked(stageId, save)) {
-              updateSave((prev) => ({ ...prev, selectedStage: stageId }));
-            }
-          }}
-          onStartRace={(stageId) => startRace(stageId)}
-          onOpenEvents={() => openModalFrom('MISSIONS', 'TITLE_MENU')}
-        />
-      )}
+        {/* Interactive 3D Garage Showroom */}
+        {screen === 'GARAGE' && (
+          <GarageModal
+            save={save}
+            initialVehicleId={garageInitialVehicle}
+            graphicsQuality={save.settings.graphicsQuality}
+            onClose={() => {
+              soundRef.current?.playClick();
+              setGarageInitialVehicle(undefined);
+              setScreen(returnScreen);
+            }}
+            onSelectVehicle={handleSelectVehicle}
+            onUnlockVehicle={handleUnlockVehicle}
+            onSetPaint={handleSetPaint}
+            onSetNeon={handleSetNeon}
+            onSetLivery={handleSetLivery}
+            onSelectOrUnlockWheel={handleSelectOrUnlockWheel}
+            onToggleOrUnlockAccessory={handleToggleOrUnlockAccessory}
+            onBuyUpgrade={handleBuyUpgrade}
+            onOpenUpgrades={() => openModalFrom('UPGRADES', returnScreen)}
+          />
+        )}
 
-      {/* Shop Depot */}
-      {screen === 'SHOP' && (
-        <ShopModal
-          save={save}
-          onClose={() => {
-            soundRef.current?.playClick();
-            setScreen(returnScreen);
-          }}
-          onClaimFreeGems={handleClaimFreeGems}
-          onExchangeGemsForCoins={handleExchangeGemsForCoins}
-          onBuyStarterPack={handleBuyStarterPack}
-          onBuyBooster={handleBuyBooster}
-          onRefillTickets={handleRefillTickets}
-          onOpenChest={handleOpenChest}
-        />
-      )}
+        {/* Mechanical Upgrades Screen */}
+        {screen === 'UPGRADES' && (
+          <UpgradesModal
+            save={save}
+            vehicle={activeVehicle}
+            onClose={() => {
+              soundRef.current?.playClick();
+              setScreen(returnScreen);
+            }}
+            onBuyUpgrade={handleBuyUpgrade}
+          />
+        )}
 
-      {/* Missions & Season 12 Wild Roads */}
-      {screen === 'MISSIONS' && (
-        <MissionsModal
-          save={save}
-          onClose={() => {
-            soundRef.current?.playClick();
-            setScreen(returnScreen);
-          }}
-          onClaimReward={handleClaimReward}
-        />
-      )}
+        {/* World Map Stage Selector */}
+        {screen === 'WORLD_MAP' && (
+          <WorldMapModal
+            save={save}
+            onClose={() => {
+              soundRef.current?.playClick();
+              setScreen('TITLE_MENU');
+            }}
+            onSelectStage={(stageId) => {
+              soundRef.current?.playClick();
+              if (isStageUnlocked(stageId, save)) {
+                updateSave((prev) => ({ ...prev, selectedStage: stageId }));
+              }
+            }}
+            onStartRace={(stageId) => startRace(stageId)}
+            onOpenEvents={() => openModalFrom('MISSIONS', 'TITLE_MENU', 'SEASON')}
+          />
+        )}
 
-      {/* Physics Tuning Bench */}
-      {screen === 'TUNING' && (
-        <TuningModal
-          tuning={save.tuning}
-          onUpdateTuning={handleUpdateTuning}
-          onResetSave={() => {
-            const fresh = resetSaveData();
-            setSave(fresh);
-          }}
-          onClose={() => {
-            soundRef.current?.playClick();
-            setScreen(returnScreen);
-          }}
-        />
-      )}
+        {/* Shop Depot */}
+        {screen === 'SHOP' && (
+          <ShopModal
+            save={save}
+            onClose={() => {
+              soundRef.current?.playClick();
+              setScreen(returnScreen);
+            }}
+            onClaimFreeGems={handleClaimFreeGems}
+            onExchangeGemsForCoins={handleExchangeGemsForCoins}
+            onExchangeCoinsForGems={handleExchangeCoinsForGems}
+            onBuyStarterPack={handleBuyStarterPack}
+            onBuyBooster={handleBuyBooster}
+            onRefillTickets={handleRefillTickets}
+            onOpenChest={handleOpenChest}
+          />
+        )}
 
-      {/* WebGL Context Lost Recovery Banner */}
-      {contextLost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 p-6 text-center text-white">
-          <div className="max-w-sm rounded-2xl border border-rose-500/50 bg-slate-900 p-6">
-            <h2 className="font-display text-xl font-black text-rose-300 uppercase">
-              GRAPHICS CONTEXT INTERRUPTED
-            </h2>
-            <p className="mt-2 text-xs text-slate-300">
-              WebGL lost hardware graphics access. Reload the page to restore the 3D engine safely.
-            </p>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="mt-4 rounded-xl bg-amber-400 px-5 py-2.5 font-display text-sm font-black text-slate-950 uppercase"
-            >
-              RELOAD GAME
-            </button>
+        {/* Missions & Season 12 Wild Roads */}
+        {screen === 'MISSIONS' && (
+          <MissionsModal
+            save={save}
+            initialTab={missionsTab}
+            onClose={() => {
+              soundRef.current?.playClick();
+              setScreen(returnScreen);
+            }}
+            onClaimReward={handleClaimReward}
+          />
+        )}
+
+        {/* Physics Tuning Bench */}
+        {screen === 'TUNING' && (
+          <TuningModal
+            tuning={save.tuning}
+            onUpdateTuning={handleUpdateTuning}
+            onResetSave={() => {
+              const fresh = resetSaveData();
+              setSave(fresh);
+            }}
+            onClose={() => {
+              soundRef.current?.playClick();
+              setScreen(returnScreen);
+            }}
+          />
+        )}
+
+        {/* Settings & Controls */}
+        {screen === 'SETTINGS' && (
+          <SettingsModal
+            settings={save.settings}
+            muted={save.muted}
+            onUpdateSettings={handleUpdateSettings}
+            onToggleMute={toggleMute}
+            onReplayTutorial={() => {
+              soundRef.current?.playClick();
+              updateSave((prev) => ({ ...prev, tutorialSeen: false }));
+              setScreen('TITLE_MENU');
+            }}
+            onClose={() => {
+              soundRef.current?.playClick();
+              setScreen(returnScreen);
+            }}
+          />
+        )}
+
+        {/* WebGL Context Lost Recovery Banner */}
+        {contextLost && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 p-6 text-center text-white">
+            <div className="max-w-sm rounded-2xl border border-rose-500/50 bg-slate-900 p-6">
+              <h2 className="font-display text-xl font-black text-rose-300 uppercase">
+                GRAPHICS CONTEXT INTERRUPTED
+              </h2>
+              <p className="mt-2 text-xs text-slate-300">
+                WebGL lost hardware graphics access. Reload the page to restore the 3D engine safely.
+              </p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="mt-4 rounded-xl bg-amber-400 px-5 py-2.5 font-display text-sm font-black text-slate-950 uppercase"
+              >
+                RELOAD GAME
+              </button>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </MotionConfig>
   );
 }

@@ -157,6 +157,33 @@ export const VehicleSilhouetteIcon: React.FC<{
       </svg>
     );
   }
+  if (vehicleId === 'cheetah_vc') {
+    return (
+      <svg viewBox="0 0 96 54" className={className} aria-hidden="true">
+        <path d="M12 24h5v8H12z" fill="#0f172a" />
+        <path d="M9 22h11v3H9z" fill={color} stroke="#0f172a" strokeWidth="1.2" />
+        <path d="M12 36l6-9 18-3 12-7h14l14 7 12 4-2 8H12z" fill={color} stroke="#0f172a" strokeWidth="1.8" />
+        <path d="M40 24l9-5h11l7 5z" fill="#67e8f9" />
+        <circle cx="27" cy="38" r="8" fill="#111827" stroke="#22d3ee" strokeWidth="2" />
+        <circle cx="72" cy="38" r="7.5" fill="#111827" stroke="#22d3ee" strokeWidth="2" />
+        <circle cx="27" cy="38" r="4.5" fill="#e2e8f0" />
+        <circle cx="72" cy="38" r="4.2" fill="#e2e8f0" />
+      </svg>
+    );
+  }
+  if (vehicleId === 'donk_leonida') {
+    return (
+      <svg viewBox="0 0 96 54" className={className} aria-hidden="true">
+        <path d="M10 27l4-8h18l9-7h18l9 7h17l3 8H10z" fill={color} stroke="#0f172a" strokeWidth="1.8" />
+        <rect x="38" y="14" width="19" height="6" rx="1" fill="#7dd3fc" />
+        <rect x="10" y="25" width="76" height="2" fill="#f8fafc" />
+        <circle cx="26" cy="38" r="11.5" fill="#111827" stroke="#f472b6" strokeWidth="2" />
+        <circle cx="70" cy="38" r="11.5" fill="#111827" stroke="#f472b6" strokeWidth="2" />
+        <circle cx="26" cy="38" r="8" fill="#cbd5e1" stroke="#475569" strokeWidth="1.5" />
+        <circle cx="70" cy="38" r="8" fill="#cbd5e1" stroke="#475569" strokeWidth="1.5" />
+      </svg>
+    );
+  }
   // Default: Ranger Jeep
   return (
     <svg viewBox="0 0 96 54" className={className} aria-hidden="true">
@@ -170,3 +197,73 @@ export const VehicleSilhouetteIcon: React.FC<{
     </svg>
   );
 };
+
+export const BronzeCrateIcon: React.FC<{ className?: string }> = ({ className = 'w-14 h-14' }) => (
+  <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
+    <defs>
+      <linearGradient id="hcrCrateWood" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stopColor="#d97706" />
+        <stop offset="100%" stopColor="#78350f" />
+      </linearGradient>
+    </defs>
+    <rect x="8" y="14" width="48" height="40" rx="5" fill="url(#hcrCrateWood)" stroke="#fbbf24" strokeWidth="2.5" />
+    <path d="M8 26h48M8 42h48M22 14v40M42 14v40" stroke="#451a03" strokeWidth="2.5" />
+    <rect x="26" y="24" width="12" height="14" rx="2.5" fill="#1e293b" stroke="#fbbf24" strokeWidth="2" />
+    <circle cx="32" cy="30" r="2.5" fill="#facc15" />
+    <circle cx="14" cy="20" r="1.8" fill="#fde68a" />
+    <circle cx="50" cy="20" r="1.8" fill="#fde68a" />
+    <circle cx="14" cy="48" r="1.8" fill="#fde68a" />
+    <circle cx="50" cy="48" r="1.8" fill="#fde68a" />
+  </svg>
+);
+
+export const GoldChestIcon: React.FC<{ className?: string }> = ({ className = 'w-14 h-14' }) => (
+  <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
+    <defs>
+      <linearGradient id="hcrGoldChest" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#fef08a" />
+        <stop offset="45%" stopColor="#f59e0b" />
+        <stop offset="100%" stopColor="#92400e" />
+      </linearGradient>
+    </defs>
+    <path d="M10 24c0-7 6-12 22-12s22 5 22 12v6H10v-6z" fill="url(#hcrGoldChest)" stroke="#fef9c3" strokeWidth="2.2" />
+    <rect x="8" y="29" width="48" height="25" rx="4" fill="#4c1d95" stroke="#fde047" strokeWidth="2.5" />
+    <rect x="16" y="29" width="6" height="25" fill="url(#hcrGoldChest)" />
+    <rect x="42" y="29" width="6" height="25" fill="url(#hcrGoldChest)" />
+    <rect x="26" y="25" width="12" height="14" rx="3" fill="#0f172a" stroke="#fef08a" strokeWidth="2" />
+    <polygon points="32,27 36,31 32,37 28,31" fill="#38bdf8" />
+  </svg>
+);
+
+export const NitroBottleIcon: React.FC<{ className?: string }> = ({ className = 'w-14 h-14' }) => (
+  <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
+    <defs>
+      <linearGradient id="hcrNitroBody" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#38bdf8" />
+        <stop offset="60%" stopColor="#0284c7" />
+        <stop offset="100%" stopColor="#0c4a6e" />
+      </linearGradient>
+    </defs>
+    <rect x="26" y="6" width="12" height="7" rx="2" fill="#94a3b8" />
+    <path d="M22 18c0-3 4-5 10-5s10 2 10 5v34a6 6 0 0 1-6 6H28a6 6 0 0 1-6-6V18z" fill="url(#hcrNitroBody)" stroke="#bae6fd" strokeWidth="2" />
+    <rect x="22" y="34" width="20" height="7" fill="#0f172a" fillOpacity="0.45" />
+    <path d="M33 21l-5 9h5l-2 9 7-11h-5l2-7z" fill="#fef08a" />
+  </svg>
+);
+
+export const MagnetBoostIcon: React.FC<{ className?: string }> = ({ className = 'w-14 h-14' }) => (
+  <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
+    <path d="M18 14v18a14 14 0 0 0 28 0V14h-9v18a5 5 0 0 1-10 0V14h-9z" fill="#ef4444" stroke="#fecaca" strokeWidth="2" strokeLinejoin="round" />
+    <rect x="18" y="12" width="9" height="8" rx="1" fill="#cbd5e1" />
+    <rect x="37" y="12" width="9" height="8" rx="1" fill="#cbd5e1" />
+    <path d="M28 52c3 2 5 2 8 0M24 56c5 3 11 3 16 0" stroke="#38bdf8" strokeWidth="2.4" strokeLinecap="round" fill="none" />
+  </svg>
+);
+
+export const RankShieldIcon: React.FC<{ className?: string }> = ({ className = 'w-5 h-5' }) => (
+  <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+    <path d="M12 2l8 3.5V11c0 5.2-3.4 9.7-8 11-4.6-1.3-8-5.8-8-11V5.5L12 2z" fill="#1e293b" stroke="#ffc52e" strokeWidth="1.8" />
+    <path d="M12 6.5l1.6 3.3 3.6.5-2.6 2.5.6 3.6L12 14.7l-3.2 1.7.6-3.6-2.6-2.5 3.6-.5z" fill="#ffc52e" />
+  </svg>
+);
+

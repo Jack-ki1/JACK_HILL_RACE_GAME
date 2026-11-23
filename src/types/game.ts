@@ -8,17 +8,65 @@ export type GameScreen =
   | 'WORLD_MAP'
   | 'SHOP'
   | 'MISSIONS'
-  | 'TUNING';
+  | 'TUNING'
+  | 'SETTINGS';
 
-export type StageId = 'countryside' | 'red_canyon' | 'frost_peaks' | 'moon';
+export type GraphicsQuality = 'auto' | 'high' | 'medium' | 'low';
 
-export type VehicleId = 'ranger' | 'monster' | 'buggy' | 'muscle' | 'superbike';
+export type CameraShakeMode = 'full' | 'subtle' | 'off';
+
+export interface GameSettings {
+  masterVolume: number;
+  sfxVolume: number;
+  graphicsQuality: GraphicsQuality;
+  cameraShake: CameraShakeMode;
+  showGhost: boolean;
+  reducedMotion: boolean;
+  showControlHints: boolean;
+}
+
+export type StageId = 'countryside' | 'red_canyon' | 'frost_peaks' | 'moon' | 'vice_coast';
+
+export type VehicleId =
+  | 'ranger'
+  | 'monster'
+  | 'buggy'
+  | 'muscle'
+  | 'superbike'
+  | 'cheetah_vc'
+  | 'donk_leonida';
 
 export type WheelStyleId = 'steel' | 'beadlock' | 'alloy' | 'carbon';
 
-export type SurfaceType = 'dirt' | 'rock' | 'wood' | 'snow' | 'ice' | 'regolith';
+export type VehicleAccessoryId = 'lightbar' | 'bullbar' | 'whip_flag' | 'snorkel';
+
+export type NeonColorId =
+  | 'off'
+  | 'vice_pink'
+  | 'leonida_cyan'
+  | 'miami_mint'
+  | 'sunset_amber'
+  | 'uv_violet';
+
+export type LiveryId =
+  | 'clean'
+  | 'vice_stripes'
+  | 'carbon_hood'
+  | 'leonida_interceptor'
+  | 'sunset_rally'
+  | 'sticker_bomb'
+  | 'viper_stripe';
+
+export type SurfaceType = 'dirt' | 'rock' | 'wood' | 'snow' | 'ice' | 'regolith' | 'asphalt';
 
 export type UpgradeKey = 'engine' | 'suspension' | 'tires' | 'awd' | 'fuel';
+
+export interface GhostSample {
+  t: number;
+  x: number;
+  y: number;
+  a: number;
+}
 
 export interface StageConfig {
   id: StageId;
@@ -47,6 +95,8 @@ export interface StageConfig {
   wavelengthMult: number;
   hasBridges: boolean;
   bridgeInterval: number;
+  hasWaterCrossings: boolean;
+  hasTunnels: boolean;
   hasAurora: boolean;
   hasStars: boolean;
   hasSnowfall: boolean;
@@ -91,6 +141,18 @@ export interface PaintSwatch {
   clearcoat: number;
 }
 
+export interface NeonColorConfig {
+  id: NeonColorId;
+  name: string;
+  hex: string;
+}
+
+export interface LiveryConfig {
+  id: LiveryId;
+  name: string;
+  desc: string;
+}
+
 export interface WheelStyleConfig {
   id: WheelStyleId;
   name: string;
@@ -133,8 +195,13 @@ export interface SaveData {
   vehiclePaints: Record<VehicleId, string>;
   vehicleWheels: Record<VehicleId, WheelStyleId>;
   unlockedWheels: Record<WheelStyleId, boolean>;
+  vehicleAccessories: Record<VehicleId, VehicleAccessoryId[]>;
+  unlockedAccessories: Record<VehicleAccessoryId, boolean>;
+  vehicleNeons: Record<VehicleId, NeonColorId>;
+  vehicleLiveries: Record<VehicleId, LiveryId>;
   upgrades: Record<VehicleId, UpgradeLevels>;
   stageBests: Record<StageId, number>;
+  stageGhosts: Record<StageId, GhostSample[]>;
   boosters: {
     fuelSaver: number;
     nitroCharge: number;
@@ -150,6 +217,8 @@ export interface SaveData {
   };
   tuning: TuningConfig;
   muted: boolean;
+  settings: GameSettings;
+  tutorialSeen: boolean;
 }
 
 export interface StuntCallout {
@@ -174,6 +243,8 @@ export interface RunSummary {
 export interface HudLiveSnapshot {
   distanceMeters: number;
   bestMeters: number;
+  nextFuelMeters: number | null;
+  ghostDeltaMeters: number | null;
   fuelPct: number;
   runCoins: number;
   totalCoins: number;
@@ -184,6 +255,8 @@ export interface HudLiveSnapshot {
   nitroEnergy: number;
   gear: number;
   airborne: boolean;
+  inWater: boolean;
+  inTunnel: boolean;
   callout: StuntCallout | null;
 }
 

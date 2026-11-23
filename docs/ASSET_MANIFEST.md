@@ -1,22 +1,24 @@
-# Procedural Asset & Audio Manifest
+# Procedural Asset & Audio Manifest (`jack_hill_game`)
 
 All 3D models, PBR textures, normal/bump maps, SVG icons, and sound effects are 100% procedurally generated in code (zero external binary downloads or runtime network asset dependencies).
 
-- **3D Vehicles (`src/game/models.ts`)**:
-  - **Shared Cabin, Chassis & Running Gear**: Bucket seats with headrests, dashboard with illuminated gauge pod, center shifter lever, steering column/wheel, side mirrors, front winches/D-ring shackles, roof LED lightbars, dual exhaust tips, reactive brake-light emissive materials, additive headlight volumetric cones, dual-layer Nitro afterburner plumes, and articulated `armRear` / `armFront` suspension control arms with helical coilover springs.
-  - **Wheel Assemblies**: Deep-dish rim lip, beadlock rim bolts, locking center hubs, perforated brake disc rotors, painted brake calipers, staggered lugged tires with linear bump relief (`createTireBumpTexture`).
+- **3D Vehicles, Leonida Customizations & Trail Accessories (`src/game/models.ts`)**:
+  - **Shared Cabin, Chassis & Running Gear**: Bucket seats with headrests, dashboard with illuminated gauge pod, center shifter lever, steering column/wheel, side mirrors, front winches/D-ring shackles, dual exhaust pipe bore tips with **upshift & lift-off backfire flame cones** (`backfireGlow`), diagonal rear roll-cage gusset struts (`makeTube`), radiator core backing mesh behind grilles, reactive brake-light emissive materials, **Halo LED DRL headlight rings**, **Leonida `JACK-06` sunset license plates**, additive headlight volumetric cones, dual-layer Nitro afterburner plumes, and articulated `armRear` / `armFront` suspension control arms with helical coilover springs.
+  - **Selectable Neon Underglow (`NEON_COLORS`)**: 6 chassis underglow options (`off`, `vice_pink`, `leonida_cyan`, `miami_mint`, `sunset_amber`, `uv_violet`) with physical chassis light tubes + additive ground neon pool (`neonPoolMesh`) and showroom turntable glow ring tinting.
+  - **Selectable Liveries (`LIVERY_DEFS`)**: 5 body graphic packages (`clean`, `vice_stripes`, `carbon_hood`, `leonida_interceptor`, `sunset_rally`).
+  - **Selectable 3D Accessories**: `lightbar`, `bullbar`, `whip_flag`, `snorkel` (reduces water ford drag by 45%).
+  - **Ghost Rival Hologram (`buildGhostVehicle3D`)**: Translucent cyan additive-blended hologram rig + wireframe cab outline tracking the player's best recorded run per stage.
+  - **Wheel Assemblies**: Deep-dish rim lip, beadlock rim bolts, locking center hubs, perforated brake disc rotors, painted brake calipers, staggered lugged tires with linear bump relief (`createTireBumpTexture`), plus stretched low-profile rubber over oversized 28" 10-spoke chrome rims (`isDonk`) on the Leonida Donk.
   - **Articulated Human Driver**: Multi-segment pelvis/thighs/shins/boots, G-force leaning `torsoGroup` with racing jacket & 5-point harness, 2-segment arms with gloves gripping the wheel/bars, neck, sculpted jaw/nose head (`headGroup`) with comms headset, goggles/visor, and trail/full-face helmet.
-  - **Vehicles**: `ranger` (bevel-extruded off-roader, 7-slot grille, rear spare), `monster` (lifted crawler pickup, oversized 0.78m tires), `buggy` (tubular sand rail with rear wing), `muscle` (widebody fastback with chrome supercharger intake & spoiler), `superbike` (aerodynamic fairing with gold USD forks & sport tuck rider).
+  - **7 Vehicles**: `ranger`, `monster`, `buggy`, `muscle`, `superbike`, **`cheetah_vc`** (Leonida mid-engine widebody supercar with glass engine bay over twin-turbo plenum, swan-neck GT wing, rear diffuser, quad exhausts), and **`donk_leonida`** (lifted boxy Vice coupe on 28" chrome rims with chrome bumpers & beltline trim).
 - **Procedural Textures & Bump Maps (`src/game/textures.ts`)**:
-  - `createCoinTexture`: Metallic gold coin faces with milled edge notches and denomination stamps (`5`, `25`, `100`, `500`).
-  - `createTerrainStrataTexture`: Layered sedimentary geological cliff strata with overhanging turf/snow/dust shadow lip per stage.
-  - `createRoadTrackTexture`: Two-track tire ruts and chevron tread impressions per stage.
-  - `createSurfaceBumpTexture` & `createTireBumpTexture`: Linear-space (`NoColorSpace`) bump relief textures for terrain, cliff strata, and off-road tire lugs.
-  - `createWoodPlankTexture`: Bridge plank wood grain and steel carriage bolts.
-  - `createGarageFloorTexture`: Brushed epoxy concrete showroom floor with bay safety striping and turntable markings.
-  - `createEarthTexture` & `createSignpostTexture`: Procedural Earth disc for Moon skybox and `100m`/`200m`... trail milestone signs.
-  - `createSoftGlowTexture`: Radial gradient glow sprite for sun/moon halo.
-- **Environments & Showroom (`src/game/worldScene.ts`, `src/game/garageScene.ts`)**:
-  - Rayleigh sun-scatter sky shader, Moon Earth disc, canyon gorge river water, foreground speed-sense parallax markers, countryside barns, canyon sandstone spires, 4-tier pines, and a workshop garage bay with `RectAreaLight` overhead softbox, gantry trusses, hydraulic lift columns, mechanic tool cabinet, and stacked spare tires.
+  - `createCoinTexture`, `createTerrainStrataTexture`, `createRoadTrackTexture` (including Vice Coastway asphalt + dashed highway markings), `createLicensePlateTexture`, `createSurfaceBumpTexture`, `createTireBumpTexture`, `createWoodPlankTexture`, `createGarageFloorTexture`, `createEarthTexture`, `createSignpostTexture`, and `createSoftGlowTexture`.
+- **Custom SVG Vector Iconography (`src/components/GameIcons.tsx`)**:
+  - Coin, Gem, Fuel Canister, Driver Avatar, Rank Shield (`RankShieldIcon`), 7 Vehicle Silhouettes (`VehicleSilhouetteIcon`), Upgrade Part icons (`UpgradePartIcon`), Bronze Crate (`BronzeCrateIcon`), Gold Chest (`GoldChestIcon`), Nitro Bottle (`NitroBottleIcon`), and Coin Magnet (`MagnetBoostIcon`).
+- **5 Biomes, Grounding & Showroom (`src/game/worldScene.ts`, `src/game/garageScene.ts`)**:
+  - Biomes: **`vice_coast` (Vice Coastway)**, `countryside`, `red_canyon`, `frost_peaks`, and `moon`.
+  - Rayleigh sun-scatter sky shader (including twilight coral/pink/violet Vice Coastway sunset), Moon Earth disc, curved **Leonida Palm Trees** with coconuts, **Vice Neon Highway Sign Gantries**, **Vice Beach Lifeguard Towers**, coastal reflector Jersey barriers, **Hot Air Balloons**, **Wooden Utility Poles & Power Lines**, rocky boulder clusters, canyon gorge river water, **River Water Crossings**, **Cave Tunnels**, terrain-tracking radial contact shadow mesh, and configurable graphics quality tiers (`auto`, `high`, `medium`, `low`).
+  - Workshop garage bay with `RectAreaLight` overhead softbox, turntable radial contact shadow plane, neon-synced turntable glow ring, 6 camera presets (`hero`, `profile`, `front`, `rear`, `cockpit`, `wheels`), gantry trusses, hydraulic lift columns, mechanic tool cabinet, and stacked spare tires.
 - **Web Audio (`src/game/audio.ts`)**:
-  - Vehicle-pitched dual-oscillator engine synth (`sawtooth` + `triangle` through dynamic lowpass filter, tuned across `superbike`, `buggy`, `ranger`, `muscle`, and `monster`), bandpass noise Nitro jet, upshift exhaust pop (`playGearShift()`), coins, fuel arpeggio, stunt fanfare, suspension landing thud, crash sweep, and UI clicks.
+  - Vehicle-pitched dual-oscillator engine synth (`sawtooth` + `triangle` through dynamic lowpass filter, tuned per all 7 vehicles including `cheetah_vc` twin-turbo and `donk_leonida` V8 rumble), bandpass noise Nitro jet, bandpass noise water ford splash SFX (`playSplash()`), upshift exhaust pop (`playGearShift()`), coins, fuel arpeggio, stunt fanfare, suspension landing thud, crash sweep, UI clicks, and independent Master & SFX volume sliders (`setVolumes`).
+

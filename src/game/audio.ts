@@ -8,13 +8,27 @@ export class SoundEngine {
   private nitroGain: GainNode | null = null;
   private nitroFilter: BiquadFilterNode | null = null;
   private muted = false;
+  private masterVol = 0.75;
+  private sfxVol = 0.9;
   private coinCombo = 0;
   private lastCoinTime = 0;
 
   public setMuted(m: boolean): void {
     this.muted = m;
     if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setTargetAtTime(m ? 0 : 0.7, this.ctx.currentTime, 0.03);
+      this.masterGain.gain.setTargetAtTime(m ? 0 : this.masterVol * 0.85, this.ctx.currentTime, 0.03);
+    }
+  }
+
+  public setVolumes(master: number, sfx: number): void {
+    this.masterVol = Math.max(0, Math.min(1, master));
+    this.sfxVol = Math.max(0, Math.min(1, sfx));
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setTargetAtTime(
+        this.muted ? 0 : this.masterVol * 0.85,
+        this.ctx.currentTime,
+        0.03,
+      );
     }
   }
 
@@ -31,7 +45,7 @@ export class SoundEngine {
         if (!AudioCtx) return;
         this.ctx = new AudioCtx();
         this.masterGain = this.ctx.createGain();
-        this.masterGain.gain.value = this.muted ? 0 : 0.7;
+        this.masterGain.gain.value = this.muted ? 0 : this.masterVol * 0.85;
         this.masterGain.connect(this.ctx.destination);
 
         // Dual-oscillator off-road engine synth
@@ -110,17 +124,23 @@ export class SoundEngine {
     const pitchScale =
       vehicleId === 'superbike'
         ? 1.75
-        : vehicleId === 'buggy'
-          ? 1.25
-          : vehicleId === 'monster'
-            ? 0.78
-            : vehicleId === 'muscle'
-              ? 0.86
-              : 1.0;
+        : vehicleId === 'cheetah_vc'
+          ? 1.38
+          : vehicleId === 'buggy'
+            ? 1.25
+            : vehicleId === 'monster'
+              ? 0.78
+              : vehicleId === 'donk_leonida'
+                ? 0.82
+                : vehicleId === 'muscle'
+                  ? 0.86
+                  : 1.0;
     const baseFreq = (42 + rpm * 112 + (nitro ? 26 : 0)) * pitchScale;
     this.engineOsc1.frequency.setTargetAtTime(baseFreq, now, 0.03);
     this.engineOsc2.frequency.setTargetAtTime(
-      vehicleId === 'muscle' || vehicleId === 'monster' ? baseFreq * 0.5 : baseFreq * 0.75,
+      vehicleId === 'muscle' || vehicleId === 'monster' || vehicleId === 'donk_leonida'
+        ? baseFreq * 0.5
+        : baseFreq * 0.75,
       now,
       0.03,
     );
@@ -136,14 +156,14 @@ export class SoundEngine {
   }
 
   public playGearShift(): void {
-    if (!this.ctx || !this.masterGain || this.muted) return;
+    if (!this.ctx || !this.masterGain || this.muted || this.sfxVol <= 0.01) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();
     osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(165, now);
     osc.frequency.exponentialRampToValueAtTime(52, now + 0.075);
-    g.gain.setValueAtTime(0.11, now);
+    g.gain.setValueAtTime(0.11 * this.sfxVol, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
     osc.connect(g);
     g.connect(this.masterGain);
@@ -152,7 +172,7 @@ export class SoundEngine {
   }
 
   public playCoin(value: number): void {
-    if (!this.ctx || !this.masterGain || this.muted) return;
+    if (!this.ctx || !this.masterGain || this.muted || this.sfxVol <= 0.01) return;
     const now = this.ctx.currentTime;
     if (now - this.lastCoinTime < 0.7) {
       this.coinCombo = Math.min(8, this.coinCombo + 1);
@@ -169,7 +189,7 @@ export class SoundEngine {
     osc.frequency.setValueAtTime(pitch, now);
     osc.frequency.exponentialRampToValueAtTime(pitch * 1.48, now + 0.09);
 
-    g.gain.setValueAtTime(0.14, now);
+    g.gain.setValueAtTime(0.14 * this.sfxVol, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
 
     osc.connect(g);
@@ -179,7 +199,7 @@ export class SoundEngine {
   }
 
   public playFuel(): void {
-    if (!this.ctx || !this.masterGain || this.muted) return;
+    if (!this.ctx || !this.masterGain || this.muted || this.sfxVol <= 0.01) return;
     const now = this.ctx.currentTime;
     const notes = [440, 554.37, 659.25, 880];
     notes.forEach((freq, idx) => {
@@ -189,7 +209,7 @@ export class SoundEngine {
       osc.type = 'triangle';
       const t = now + idx * 0.055;
       osc.frequency.setValueAtTime(freq, t);
-      g.gain.setValueAtTime(0.16, t);
+      g.gain.setValueAtTime(0.16 * this.sfxVol, t);
       g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
       osc.connect(g);
       g.connect(this.masterGain);
@@ -199,7 +219,7 @@ export class SoundEngine {
   }
 
   public playStunt(): void {
-    if (!this.ctx || !this.masterGain || this.muted) return;
+    if (!this.ctx || !this.masterGain || this.muted || this.sfxVol <= 0.01) return;
     const now = this.ctx.currentTime;
     [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
       if (!this.ctx || !this.masterGain) return;
@@ -208,7 +228,7 @@ export class SoundEngine {
       osc.type = 'triangle';
       const t = now + i * 0.04;
       osc.frequency.setValueAtTime(freq, t);
-      g.gain.setValueAtTime(0.12, t);
+      g.gain.setValueAtTime(0.12 * this.sfxVol, t);
       g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
       osc.connect(g);
       g.connect(this.masterGain);
@@ -218,14 +238,14 @@ export class SoundEngine {
   }
 
   public playLanding(intensity: number): void {
-    if (!this.ctx || !this.masterGain || this.muted) return;
+    if (!this.ctx || !this.masterGain || this.muted || this.sfxVol <= 0.01) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(115, now);
     osc.frequency.exponentialRampToValueAtTime(36, now + 0.14);
-    g.gain.setValueAtTime(0.18 * Math.min(1, intensity), now);
+    g.gain.setValueAtTime(0.18 * Math.min(1, intensity) * this.sfxVol, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
     osc.connect(g);
     g.connect(this.masterGain);
@@ -234,14 +254,14 @@ export class SoundEngine {
   }
 
   public playCrash(): void {
-    if (!this.ctx || !this.masterGain || this.muted) return;
+    if (!this.ctx || !this.masterGain || this.muted || this.sfxVol <= 0.01) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();
     osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(160, now);
     osc.frequency.exponentialRampToValueAtTime(28, now + 0.42);
-    g.gain.setValueAtTime(0.28, now);
+    g.gain.setValueAtTime(0.28 * this.sfxVol, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
     osc.connect(g);
     g.connect(this.masterGain);
@@ -249,15 +269,43 @@ export class SoundEngine {
     osc.stop(now + 0.46);
   }
 
+  public playSplash(intensity: number): void {
+    if (!this.ctx || !this.masterGain || this.muted || this.sfxVol <= 0.01) return;
+    const now = this.ctx.currentTime;
+    const dur = 0.24;
+    const buf = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * dur), this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1100, now);
+    filter.frequency.exponentialRampToValueAtTime(420, now + dur);
+    filter.Q.value = 0.85;
+
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.16 * Math.min(1, Math.max(0.25, intensity)) * this.sfxVol, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(this.masterGain);
+    src.start(now);
+  }
+
   public playClick(upgrade = false): void {
-    if (!this.ctx || !this.masterGain || this.muted) return;
+    if (!this.ctx || !this.masterGain || this.muted || this.sfxVol <= 0.01) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();
     osc.type = upgrade ? 'triangle' : 'sine';
     osc.frequency.setValueAtTime(upgrade ? 620 : 480, now);
     osc.frequency.exponentialRampToValueAtTime(upgrade ? 930 : 320, now + 0.07);
-    g.gain.setValueAtTime(0.1, now);
+    g.gain.setValueAtTime(0.1 * this.sfxVol, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
     osc.connect(g);
     g.connect(this.masterGain);

@@ -1,13 +1,20 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
-import { PAINT_SWATCHES, VEHICLES, WHEEL_STYLES } from './constants';
+import { NEON_COLORS, PAINT_SWATCHES, VEHICLES, WHEEL_STYLES } from './constants';
 import { buildVehicle3D, VehicleRig3D } from './models';
-import { createGarageFloorTexture } from './textures';
+import { createGarageFloorTexture, createSoftGlowTexture } from './textures';
 import { detectSoftwareWebGL } from './worldScene';
-import { VehicleId, WheelStyleId } from '../types/game';
+import {
+  GraphicsQuality,
+  LiveryId,
+  NeonColorId,
+  VehicleAccessoryId,
+  VehicleId,
+  WheelStyleId,
+} from '../types/game';
 
-export type GarageCameraPreset = 'hero' | 'profile' | 'cockpit' | 'wheels';
+export type GarageCameraPreset = 'hero' | 'profile' | 'front' | 'rear' | 'cockpit' | 'wheels';
 
 export class GarageSceneController {
   private container: HTMLElement;
@@ -16,9 +23,14 @@ export class GarageSceneController {
   private camera: THREE.PerspectiveCamera;
   private isSoftwareGl: boolean;
   private turntable: THREE.Group;
+  private turntableGlowMat: THREE.MeshBasicMaterial;
   private vehicleRig: VehicleRig3D | null = null;
   private activeVehicleDef = VEHICLES[0];
+  private maxAniso = 8;
   private floorTex: THREE.CanvasTexture;
+  private contactShadowTex: THREE.CanvasTexture;
+  private contactShadowMesh: THREE.Mesh;
+  private studioSpot: THREE.SpotLight;
   private frameId = 0;
   private disposed = false;
   private lastTime = 0;
@@ -82,6 +94,7 @@ export class GarageSceneController {
     spot.castShadow = !this.isSoftwareGl;
     spot.shadow.mapSize.set(1024, 1024);
     spot.shadow.bias = -0.0005;
+    this.studioSpot = spot;
     this.scene.add(spot);
 
     if (!this.isSoftwareGl) {
@@ -101,8 +114,8 @@ export class GarageSceneController {
     this.scene.add(blueRim);
 
     // Concrete Epoxy Showroom Floor
-    const maxAniso = Math.min(8, this.renderer.capabilities.getMaxAnisotropy() || 1);
-    this.floorTex = createGarageFloorTexture(maxAniso);
+    this.maxAniso = Math.min(16, this.renderer.capabilities.getMaxAnisotropy() || 1);
+    this.floorTex = createGarageFloorTexture(this.maxAniso);
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(24, 48),
       new THREE.MeshStandardMaterial({
@@ -181,13 +194,31 @@ export class GarageSceneController {
     deck.receiveShadow = true;
     this.turntable.add(deck);
 
+    this.turntableGlowMat = new THREE.MeshBasicMaterial({ color: '#38bdf8' });
     const glowRing = new THREE.Mesh(
       new THREE.TorusGeometry(3.04, 0.045, 8, 64),
-      new THREE.MeshBasicMaterial({ color: '#38bdf8' }),
+      this.turntableGlowMat,
     );
     glowRing.rotation.x = Math.PI / 2;
     glowRing.position.y = 0.22;
     this.turntable.add(glowRing);
+
+    // Grounded Contact Shadow Decal directly under vehicle on turntable
+    this.contactShadowTex = createSoftGlowTexture();
+    this.contactShadowMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.8, 2.7),
+      new THREE.MeshBasicMaterial({
+        map: this.contactShadowTex,
+        color: '#020617',
+        transparent: true,
+        opacity: 0.72,
+        depthWrite: false,
+      }),
+    );
+    this.contactShadowMesh.rotation.x = -Math.PI / 2;
+    this.contactShadowMesh.position.y = 0.228;
+    this.turntable.add(this.contactShadowMesh);
+
     this.scene.add(this.turntable);
 
     // Pointer Drag to Spin
@@ -216,6 +247,30 @@ export class GarageSceneController {
     this.scheduleNextFrame();
   }
 
+  public applyGraphicsQuality(tier: GraphicsQuality): void {
+    if (this.isSoftwareGl) {
+      this.renderer.setPixelRatio(1);
+      this.renderer.shadowMap.enabled = false;
+      this.studioSpot.castShadow = false;
+      return;
+    }
+    const maxDpr = window.devicePixelRatio || 1;
+    if (tier === 'low') {
+      this.renderer.setPixelRatio(1);
+      this.renderer.shadowMap.enabled = false;
+      this.studioSpot.castShadow = false;
+    } else if (tier === 'medium') {
+      this.renderer.setPixelRatio(Math.min(maxDpr, 1.35));
+      this.renderer.shadowMap.enabled = true;
+      this.studioSpot.castShadow = true;
+    } else {
+      this.renderer.setPixelRatio(Math.min(maxDpr, tier === 'high' ? 2 : 1.75));
+      this.renderer.shadowMap.enabled = true;
+      this.studioSpot.castShadow = true;
+    }
+    this.handleResize();
+  }
+
   public setCameraPreset(preset: GarageCameraPreset): void {
     this.camPreset = preset;
     if (preset === 'hero') {
@@ -225,6 +280,14 @@ export class GarageSceneController {
       this.targetCamPos.set(0, 1.35, 6.2);
       this.targetCamLook.set(0, 0.88, 0);
       this.targetYaw = 0;
+    } else if (preset === 'front') {
+      this.targetCamPos.set(0, 1.45, 6.1);
+      this.targetCamLook.set(0, 0.9, 0);
+      this.targetYaw = -Math.PI / 2;
+    } else if (preset === 'rear') {
+      this.targetCamPos.set(0, 1.48, 6.1);
+      this.targetCamLook.set(0, 0.92, 0);
+      this.targetYaw = Math.PI / 2;
     } else if (preset === 'cockpit') {
       this.targetCamPos.set(0.2, 2.15, 3.6);
       this.targetCamLook.set(0, 1.1, 0);
@@ -253,18 +316,34 @@ export class GarageSceneController {
     paintId: string,
     wheelId: WheelStyleId,
     animateDrop = true,
+    accessories: VehicleAccessoryId[] = ['lightbar'],
+    neonColorId: NeonColorId = 'off',
+    liveryId: LiveryId = 'clean',
   ): void {
     const vehicle = VEHICLES.find((v) => v.id === vehicleId) ?? VEHICLES[0];
     this.activeVehicleDef = vehicle;
     const paint = PAINT_SWATCHES.find((p) => p.id === paintId) ?? PAINT_SWATCHES[0];
     const wheelStyle = WHEEL_STYLES.find((w) => w.id === wheelId) ?? WHEEL_STYLES[0];
+    const neonDef = NEON_COLORS.find((n) => n.id === neonColorId);
+    this.turntableGlowMat.color.set(
+      neonDef && neonDef.id !== 'off' ? neonDef.hex : '#38bdf8',
+    );
 
     if (this.vehicleRig) {
       this.turntable.remove(this.vehicleRig.root);
       this.vehicleRig.dispose();
     }
 
-    this.vehicleRig = buildVehicle3D(vehicle, paint, wheelStyle, false);
+    this.vehicleRig = buildVehicle3D(
+      vehicle,
+      paint,
+      wheelStyle,
+      false,
+      accessories,
+      neonColorId,
+      liveryId,
+      this.maxAniso,
+    );
     this.vehicleRig.headlightCones.forEach((c) => (c.visible = this.headlightsOn));
 
     const wheelY = 0.22 + vehicle.wheelRadius;
@@ -367,6 +446,10 @@ export class GarageSceneController {
       this.vehicleRig.shockRear.scale.y = shockLen;
       this.vehicleRig.shockFront.position.y = -comp;
       this.vehicleRig.shockFront.scale.y = shockLen;
+
+      if (this.vehicleRig.whipFlag) {
+        this.vehicleRig.whipFlag.rotation.y = Math.sin(now * 0.006) * 0.22;
+      }
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -380,6 +463,9 @@ export class GarageSceneController {
     this.resizeObserver.disconnect();
     this.vehicleRig?.dispose();
     this.floorTex.dispose();
+    this.contactShadowTex.dispose();
+    this.contactShadowMesh.geometry.dispose();
+    (this.contactShadowMesh.material as THREE.Material).dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode === this.container) {
       this.container.removeChild(this.renderer.domElement);
