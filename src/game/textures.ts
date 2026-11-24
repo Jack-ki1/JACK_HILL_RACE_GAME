@@ -57,6 +57,32 @@ export function createCoinTexture(value: number, maxAniso: number): THREE.Canvas
   return tex;
 }
 
+function fbmNoise(x: number, y: number, seed = 1): number {
+  const n1 = pseudoNoise(Math.floor(x), Math.floor(y), seed);
+  const n2 = pseudoNoise(Math.floor(x) + 1, Math.floor(y), seed);
+  const n3 = pseudoNoise(Math.floor(x), Math.floor(y) + 1, seed);
+  const n4 = pseudoNoise(Math.floor(x) + 1, Math.floor(y) + 1, seed);
+  const fx = x - Math.floor(x);
+  const fy = y - Math.floor(y);
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  return (n1 * (1 - ux) + n2 * ux) * (1 - uy) + (n3 * (1 - ux) + n4 * ux) * uy;
+}
+
+function rockRidgeFbm(x: number, y: number, seed = 1): number {
+  let sum = 0;
+  let amp = 0.52;
+  let freq = 1;
+  for (let o = 0; o < 4; o++) {
+    const v = fbmNoise(x * freq, y * freq, seed + o * 17);
+    const ridge = 1 - Math.abs(v * 2 - 1);
+    sum += ridge * ridge * amp;
+    freq *= 2.15;
+    amp *= 0.48;
+  }
+  return Math.min(1, Math.max(0, sum));
+}
+
 export function createTerrainStrataTexture(
   topColor: string,
   upperDirt: string,
@@ -70,48 +96,63 @@ export function createTerrainStrataTexture(
 
   const grad = ctx.createLinearGradient(0, 0, 0, 512);
   grad.addColorStop(0, topColor);
-  grad.addColorStop(0.06, upperDirt);
-  grad.addColorStop(0.45, lowerDirt);
-  grad.addColorStop(1, '#140c07');
+  grad.addColorStop(0.08, upperDirt);
+  grad.addColorStop(0.5, lowerDirt);
+  grad.addColorStop(1, '#120a06');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 512, 512);
 
-  // Crisp sedimentary geological bands
-  for (let b = 0; b < 22; b++) {
-    const by = 20 + b * 22;
-    ctx.fillStyle = b % 2 === 0 ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.08)';
+  // Crisp fractured sedimentary rock layers with angled shelves
+  for (let b = 0; b < 28; b++) {
+    const by = 14 + b * 18;
+    ctx.fillStyle = b % 2 === 0 ? 'rgba(0,0,0,0.24)' : 'rgba(255,244,230,0.09)';
     ctx.beginPath();
     ctx.moveTo(0, by);
-    for (let x = 0; x <= 512; x += 24) {
-      ctx.lineTo(x, by + Math.sin(x * 0.035 + b) * 5);
+    for (let x = 0; x <= 512; x += 16) {
+      const jag = (pseudoNoise(x * 0.08, b, 11) - 0.5) * 9 + Math.sin(x * 0.03 + b) * 4;
+      ctx.lineTo(x, by + jag);
     }
-    ctx.lineTo(512, by + 13);
-    ctx.lineTo(0, by + 13);
+    ctx.lineTo(512, by + 11);
+    ctx.lineTo(0, by + 11);
     ctx.closePath();
     ctx.fill();
-  }
 
-  // Embedded rocks, roots & crisp fracture veins
-  for (let i = 0; i < 340; i++) {
-    const px = (i * 97) % 512;
-    const py = 18 + ((i * 173) % 482);
-    const rx = 4 + (i % 15);
-    const ry = 2.5 + (i % 7);
-    ctx.fillStyle = i % 3 === 0 ? 'rgba(0,0,0,0.28)' : i % 3 === 1 ? 'rgba(255,255,255,0.11)' : 'rgba(60,40,25,0.3)';
+    // Dark crevice fracture line under each rock shelf
+    ctx.strokeStyle = 'rgba(10, 6, 4, 0.42)';
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.ellipse(px, py, rx, ry, (i % 7) * 0.22, 0, Math.PI * 2);
-    ctx.fill();
+    for (let x = 0; x <= 512; x += 16) {
+      const jag = (pseudoNoise(x * 0.08, b, 11) - 0.5) * 9 + Math.sin(x * 0.03 + b) * 4;
+      if (x === 0) ctx.moveTo(x, by + jag);
+      else ctx.lineTo(x, by + jag);
+    }
+    ctx.stroke();
   }
 
-  // Sharp overhanging turf / snow lip shadow for high-contrast side-profile separation
-  const lipGrad = ctx.createLinearGradient(0, 0, 0, 42);
+  // Sharp angular stone fragments & crevice fissures
+  for (let i = 0; i < 420; i++) {
+    const px = (i * 97) % 512;
+    const py = 16 + ((i * 173) % 484);
+    const rx = 3 + (i % 14);
+    const ry = 1.8 + (i % 6);
+    ctx.fillStyle =
+      i % 3 === 0 ? 'rgba(0,0,0,0.34)' : i % 3 === 1 ? 'rgba(255,245,230,0.12)' : 'rgba(42,24,14,0.34)';
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate((i % 9) * 0.18 - 0.8);
+    ctx.fillRect(-rx * 0.5, -ry * 0.5, rx, ry);
+    ctx.restore();
+  }
+
+  // Crisp overhanging lip & shadow band for terrain profile definition
+  const lipGrad = ctx.createLinearGradient(0, 0, 0, 38);
   lipGrad.addColorStop(0, topColor);
-  lipGrad.addColorStop(0.28, topColor);
-  lipGrad.addColorStop(0.36, 'rgba(0,0,0,0.52)');
-  lipGrad.addColorStop(0.68, 'rgba(0,0,0,0.18)');
+  lipGrad.addColorStop(0.24, topColor);
+  lipGrad.addColorStop(0.32, 'rgba(0,0,0,0.62)');
+  lipGrad.addColorStop(0.68, 'rgba(0,0,0,0.22)');
   lipGrad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = lipGrad;
-  ctx.fillRect(0, 0, 512, 42);
+  ctx.fillRect(0, 0, 512, 38);
 
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -138,73 +179,97 @@ export function createRoadTrackTexture(
   const isAsphalt = baseColor.toLowerCase() === '#363b4d';
 
   if (isAsphalt) {
-    // GTA 6 Leonida coastal highway with pink/coral curb edges & yellow dashed center stripes
+    // Realistic coastal highway with weathered shoulder curbs & sharp markings
     const roadGrad = ctx.createLinearGradient(0, 0, 0, 512);
     roadGrad.addColorStop(0, edgeColor);
-    roadGrad.addColorStop(0.14, '#d97757');
-    roadGrad.addColorStop(0.22, '#242734');
-    roadGrad.addColorStop(0.5, '#333849');
-    roadGrad.addColorStop(0.78, '#242734');
-    roadGrad.addColorStop(0.86, '#d97757');
+    roadGrad.addColorStop(0.14, '#8b6856');
+    roadGrad.addColorStop(0.22, '#222631');
+    roadGrad.addColorStop(0.5, '#2f3442');
+    roadGrad.addColorStop(0.78, '#222631');
+    roadGrad.addColorStop(0.86, '#8b6856');
     roadGrad.addColorStop(1, edgeColor);
     ctx.fillStyle = roadGrad;
     ctx.fillRect(0, 0, 512, 512);
 
     // Asphalt aggregate grain & hairline cracks
-    for (let i = 0; i < 1200; i++) {
+    for (let i = 0; i < 1600; i++) {
       const x = (i * 73) % 512;
       const y = (i * 137) % 512;
-      ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.24)';
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.28)';
       ctx.fillRect(x, y, 2, 2);
     }
+    ctx.strokeStyle = 'rgba(10,12,18,0.45)';
+    ctx.lineWidth = 1.4;
+    for (let c = 0; c < 18; c++) {
+      const sx = (c * 89) % 512;
+      const sy = 135 + ((c * 61) % 240);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + 18, sy + (c % 2 === 0 ? 11 : -9));
+      ctx.lineTo(sx + 34, sy + (c % 3 === 0 ? -5 : 7));
+      ctx.stroke();
+    }
 
-    // Razor-sharp neon-white shoulder lines + dashed gold highway center stripes
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.fillRect(0, 120, 512, 7);
-    ctx.fillRect(0, 385, 512, 7);
+    ctx.fillStyle = 'rgba(241, 245, 249, 0.86)';
+    ctx.fillRect(0, 122, 512, 6);
+    ctx.fillRect(0, 384, 512, 6);
 
-    ctx.fillStyle = '#fbbf24';
+    ctx.fillStyle = '#f59e0b';
     for (let x = 14; x < 512; x += 64) {
-      ctx.fillRect(x, 248, 36, 16);
+      ctx.fillRect(x, 249, 36, 14);
     }
   } else {
-    // Crisp two-track off-road trail with center grass/berm crown
+    // Rugged off-road rock & packed trail surface with stratified stone crevices & ruts
     const roadGrad = ctx.createLinearGradient(0, 0, 0, 512);
     roadGrad.addColorStop(0, edgeColor);
-    roadGrad.addColorStop(0.16, baseColor);
+    roadGrad.addColorStop(0.15, baseColor);
     roadGrad.addColorStop(0.28, dirtColor);
-    roadGrad.addColorStop(0.42, '#432914');
+    roadGrad.addColorStop(0.42, '#3d2413');
     roadGrad.addColorStop(0.5, dirtColor);
-    roadGrad.addColorStop(0.58, '#432914');
+    roadGrad.addColorStop(0.58, '#3d2413');
     roadGrad.addColorStop(0.72, dirtColor);
-    roadGrad.addColorStop(0.84, baseColor);
+    roadGrad.addColorStop(0.85, baseColor);
     roadGrad.addColorStop(1, edgeColor);
     ctx.fillStyle = roadGrad;
     ctx.fillRect(0, 0, 512, 512);
 
-    // Subtle tire tread impressions & sharp gravel pebbles
-    for (let i = 0; i < 750; i++) {
+    // Stratified rock slabs & chiseled fracture lines across trail width
+    for (let s = 0; s < 32; s++) {
+      const sy = (s * 16) % 512;
+      ctx.strokeStyle = s % 2 === 0 ? 'rgba(15, 8, 4, 0.34)' : 'rgba(255, 240, 220, 0.11)';
+      ctx.lineWidth = s % 3 === 0 ? 2.4 : 1.4;
+      ctx.beginPath();
+      for (let x = 0; x <= 512; x += 24) {
+        const yOff = (pseudoNoise(x * 0.05, s, 4) - 0.5) * 14;
+        if (x === 0) ctx.moveTo(x, sy + yOff);
+        else ctx.lineTo(x, sy + yOff);
+      }
+      ctx.stroke();
+    }
+
+    // Sharp scattered gravel chips, pebbles & mineral grit
+    for (let i = 0; i < 1400; i++) {
       const x = (i * 67) % 512;
       const y = (i * 131) % 512;
-      const w = 2 + (i % 4);
-      const h = 2 + (i % 3);
-      ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.13)' : 'rgba(0,0,0,0.22)';
+      const w = 2 + (i % 5);
+      const h = 1.5 + (i % 4);
+      ctx.fillStyle = i % 3 === 0 ? 'rgba(255,248,238,0.16)' : 'rgba(12,6,3,0.28)';
       ctx.fillRect(x, y, w, h);
     }
 
-    // Crisp chevron tire marks inside the ruts
-    ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+    // Crisp off-road mud-terrain lug impressions in the two wheel tracks
+    ctx.strokeStyle = 'rgba(0,0,0,0.24)';
     ctx.lineWidth = 3;
-    for (let x = 0; x < 512; x += 24) {
+    for (let x = 0; x < 512; x += 22) {
       ctx.beginPath();
-      ctx.moveTo(x, 195);
-      ctx.lineTo(x + 10, 215);
-      ctx.moveTo(x, 235);
-      ctx.lineTo(x + 10, 215);
-      ctx.moveTo(x, 285);
-      ctx.lineTo(x + 10, 305);
-      ctx.moveTo(x, 325);
-      ctx.lineTo(x + 10, 305);
+      ctx.moveTo(x, 194);
+      ctx.lineTo(x + 9, 214);
+      ctx.moveTo(x, 234);
+      ctx.lineTo(x + 9, 214);
+      ctx.moveTo(x, 284);
+      ctx.lineTo(x + 9, 304);
+      ctx.moveTo(x, 324);
+      ctx.lineTo(x + 9, 304);
       ctx.stroke();
     }
   }
@@ -218,20 +283,26 @@ export function createRoadTrackTexture(
 }
 
 /**
- * Linear-space grayscale bump map for terrain & tire micro-relief (NoColorSpace).
+ * High-detail 512x512 linear-space rock fracture & strata bump map (NoColorSpace).
  */
-export function createSurfaceBumpTexture(maxAniso: number, contrast = 1): THREE.CanvasTexture {
-  const size = 256;
+export function createSurfaceBumpTexture(maxAniso: number, contrast = 1.15): THREE.CanvasTexture {
+  const size = 512;
   const cv = document.createElement('canvas');
   cv.width = size;
   cv.height = size;
   const ctx = cv.getContext('2d')!;
   const img = ctx.createImageData(size, size);
+
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      const n1 = pseudoNoise(x * 0.25, y * 0.25, 3);
-      const n2 = pseudoNoise(x * 0.8, y * 0.8, 9);
-      const val = Math.max(0, Math.min(255, Math.round((0.5 + (n1 * 0.6 + n2 * 0.4 - 0.5) * contrast) * 255)));
+      const ridge = rockRidgeFbm(x * 0.045, y * 0.065, 3);
+      const strata = Math.sin(y * 0.14 + ridge * 3.8) * 0.5 + 0.5;
+      const grit = pseudoNoise(x * 0.55, y * 0.55, 19);
+      const combined = ridge * 0.58 + strata * 0.24 + grit * 0.18;
+      const val = Math.max(
+        0,
+        Math.min(255, Math.round((0.5 + (combined - 0.5) * contrast * 1.45) * 255)),
+      );
       const idx = (y * size + x) * 4;
       img.data[idx] = val;
       img.data[idx + 1] = val;
@@ -240,6 +311,23 @@ export function createSurfaceBumpTexture(maxAniso: number, contrast = 1): THREE.
     }
   }
   ctx.putImageData(img, 0, 0);
+
+  // Carve sharp diagonal fracture cracks for crisp grazing-light relief
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.65)';
+  for (let c = 0; c < 26; c++) {
+    let cx = pseudoNoise(c, 1, 7) * size;
+    let cy = pseudoNoise(c, 5, 13) * size;
+    ctx.lineWidth = 1.5 + (c % 2);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    for (let seg = 0; seg < 6; seg++) {
+      cx += 18 + (pseudoNoise(c, seg, 3) - 0.3) * 26;
+      cy += (pseudoNoise(c, seg, 9) - 0.5) * 22;
+      ctx.lineTo(cx, cy);
+    }
+    ctx.stroke();
+  }
+
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.NoColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
@@ -249,25 +337,143 @@ export function createSurfaceBumpTexture(maxAniso: number, contrast = 1): THREE.
 }
 
 /**
- * Linear-space tire tread bump map for realistic rubber lugs & sidewall ribs.
+ * Linear-space aggressive mud-terrain chevron tire tread bump map (NoColorSpace).
  */
 export function createTireBumpTexture(maxAniso: number): THREE.CanvasTexture {
   const cv = document.createElement('canvas');
-  cv.width = 256;
-  cv.height = 128;
+  cv.width = 512;
+  cv.height = 256;
   const ctx = cv.getContext('2d')!;
-  ctx.fillStyle = '#404040';
-  ctx.fillRect(0, 0, 256, 128);
+  ctx.fillStyle = '#242424';
+  ctx.fillRect(0, 0, 512, 256);
 
-  ctx.fillStyle = '#d8d8d8';
-  for (let x = 0; x < 256; x += 24) {
-    ctx.fillRect(x + 3, 8, 12, 48);
-    ctx.fillRect(x + 11, 72, 12, 48);
+  ctx.fillStyle = '#ebebeb';
+  for (let x = 0; x < 512; x += 32) {
+    // Staggered angled shoulder lugs
+    ctx.beginPath();
+    ctx.moveTo(x + 2, 10);
+    ctx.lineTo(x + 18, 10);
+    ctx.lineTo(x + 24, 114);
+    ctx.lineTo(x + 8, 114);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(x + 18, 142);
+    ctx.lineTo(x + 34, 142);
+    ctx.lineTo(x + 28, 246);
+    ctx.lineTo(x + 12, 246);
+    ctx.closePath();
+    ctx.fill();
   }
+  // Center sipes
+  ctx.fillStyle = '#9a9a9a';
+  for (let x = 0; x < 512; x += 16) {
+    ctx.fillRect(x + 3, 120, 9, 16);
+  }
+
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.NoColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = maxAniso;
+  return tex;
+}
+
+/**
+ * Linear-space subtle weathered metal & off-road paint micro-grain bump texture (NoColorSpace).
+ */
+export function createWeatheredPaintBumpTexture(maxAniso: number): THREE.CanvasTexture {
+  const size = 256;
+  const cv = document.createElement('canvas');
+  cv.width = size;
+  cv.height = size;
+  const ctx = cv.getContext('2d')!;
+  const img = ctx.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const n = fbmNoise(x * 0.12, y * 0.12, 21) * 0.7 + pseudoNoise(x, y, 5) * 0.3;
+      const v = Math.round(115 + (n - 0.5) * 48);
+      const idx = (y * size + x) * 4;
+      img.data[idx] = v;
+      img.data[idx + 1] = v;
+      img.data[idx + 2] = v;
+      img.data[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  // Faint brush & trail scratches near lower rocker area
+  ctx.strokeStyle = 'rgba(200, 200, 200, 0.35)';
+  ctx.lineWidth = 1;
+  for (let s = 0; s < 28; s++) {
+    const sx = pseudoNoise(s, 2, 11) * size;
+    const sy = 140 + pseudoNoise(s, 7, 17) * 110;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx + 18 + (s % 16), sy + (s % 3) - 1);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = maxAniso;
+  return tex;
+}
+
+/**
+ * Iconic X-taped off-road rally floodlight cover texture (sRGB).
+ */
+export function createRallyLightCoverTexture(maxAniso: number): THREE.CanvasTexture {
+  const cv = document.createElement('canvas');
+  cv.width = 256;
+  cv.height = 256;
+  const ctx = cv.getContext('2d')!;
+
+  const rad = ctx.createRadialGradient(128, 128, 18, 128, 128, 124);
+  rad.addColorStop(0, '#303640');
+  rad.addColorStop(0.75, '#191d24');
+  rad.addColorStop(0.92, '#0c0e13');
+  rad.addColorStop(1, '#060709');
+  ctx.fillStyle = rad;
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Subtle metallic outer bezel ring
+  ctx.strokeStyle = '#64748b';
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.arc(128, 128, 116, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Subtle fluted glass lens rings underneath tape
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 2;
+  [44, 72, 96].forEach((r) => {
+    ctx.beginPath();
+    ctx.arc(128, 128, r, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
+  // High-contrast crisp silver-white X cross-tape strips
+  ctx.save();
+  ctx.translate(128, 128);
+  for (const ang of [Math.PI / 4, -Math.PI / 4]) {
+    ctx.save();
+    ctx.rotate(ang);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillRect(-102, -17, 204, 34);
+    ctx.fillStyle = '#e5e7eb';
+    ctx.fillRect(-100, -13, 200, 26);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillRect(-100, 6, 200, 7);
+    ctx.restore();
+  }
+  ctx.restore();
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = maxAniso;
   return tex;
 }

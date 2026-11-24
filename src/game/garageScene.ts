@@ -85,33 +85,34 @@ export class GarageSceneController {
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camLook);
 
-    // Lighting Rig + Studio Softboxes
-    const hemi = new THREE.HemisphereLight('#94a3b8', '#1e293b', 0.72);
+    // Crisp High-Contrast 3-Point Showroom Lighting Rig
+    const hemi = new THREE.HemisphereLight('#a8c2dc', '#18202c', 0.65);
     this.scene.add(hemi);
 
-    const spot = new THREE.SpotLight('#fff8eb', 45, 24, Math.PI / 4, 0.45, 1.2);
-    spot.position.set(1.8, 7.5, 3.0);
+    const spot = new THREE.SpotLight('#fff6e5', 58, 26, Math.PI / 4.2, 0.35, 1.15);
+    spot.position.set(2.4, 7.2, 3.6);
     spot.castShadow = !this.isSoftwareGl;
     spot.shadow.mapSize.set(1024, 1024);
-    spot.shadow.bias = -0.0005;
+    spot.shadow.bias = -0.0004;
+    spot.shadow.normalBias = 0.015;
     this.studioSpot = spot;
     this.scene.add(spot);
 
     if (!this.isSoftwareGl) {
       RectAreaLightUniformsLib.init();
-      const softboxTop = new THREE.RectAreaLight('#f8fafc', 6.5, 6.2, 2.2);
-      softboxTop.position.set(0, 5.4, 0.5);
-      softboxTop.lookAt(0, 0.8, 0);
+      const softboxTop = new THREE.RectAreaLight('#f8fafc', 7.2, 6.4, 2.0);
+      softboxTop.position.set(0, 5.4, 0.8);
+      softboxTop.lookAt(0, 0.85, 0);
       this.scene.add(softboxTop);
     }
 
-    const redRim = new THREE.PointLight('#ef4444', 18, 16, 1.5);
-    redRim.position.set(-4.8, 2.4, -3.5);
-    this.scene.add(redRim);
+    const warmRim = new THREE.PointLight('#f59e0b', 22, 18, 1.4);
+    warmRim.position.set(-4.8, 2.6, -3.4);
+    this.scene.add(warmRim);
 
-    const blueRim = new THREE.PointLight('#38bdf8', 16, 16, 1.5);
-    blueRim.position.set(4.8, 2.8, -3.2);
-    this.scene.add(blueRim);
+    const coolRim = new THREE.PointLight('#38bdf8', 18, 18, 1.4);
+    coolRim.position.set(4.8, 2.8, -3.2);
+    this.scene.add(coolRim);
 
     // Concrete Epoxy Showroom Floor
     this.maxAniso = Math.min(16, this.renderer.capabilities.getMaxAnisotropy() || 1);

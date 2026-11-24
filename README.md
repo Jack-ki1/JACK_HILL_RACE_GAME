@@ -1,18 +1,18 @@
 # jack_hill_game
 
-A stylized 2D/2.5D orthographic side-view arcade hill-climb racing game built with React 19, TypeScript, Tailwind CSS v4, Three.js, and Web Audio.
+A 3D rock-crawling and hill-climb racing game built with React 19, TypeScript, Tailwind CSS v4, Three.js, and Web Audio.
 
 ## Core Features
 - **180Hz Suspension & Traction Physics**: Independent dual-wheel coilover springs, asymmetric compression/rebound hydraulic damping, bump-stop saturation, Pacejka-style surface traction, AWD torque split bias, mid-air pitch rotation, hull/roll-cage protection, 65ms impact hitstop, and decaying camera shake.
-- **Orthographic Side-View Camera**: Responsive `THREE.OrthographicCamera` framing tuned for desktop (`1920×1080`), portrait mobile (`360×740`), and landscape mobile (`740×360`) viewports with safe-area padding (`env(safe-area-inset-*)`).
+- **Dual-Angle Perspective Camera**: Low front-right 3/4 rock-crawling hero showcase on the Title screen transitioning smoothly into a crisp 2.5D perspective side-follow chase camera during runs, tuned for desktop (`1920×1080`), portrait mobile (`360×740`), and landscape mobile (`740×360`) viewports with safe-area padding (`env(safe-area-inset-*)`).
 - **5 Procedural Biomes**:
   - **Vice Coastway**: Twilight coral/neon coastal highway, causeway bridges, lifeguard towers, and curved Leonida palm trees.
-  - **Countryside**: Sunlit green hills, loamy trails, pine forests, barns, and wooden bridges.
-  - **Red Canyon**: Sandstone mesas, saguaro cacti, dust motes, deep canyon gorges, and wooden trestle bridges.
+  - **Countryside**: Golden-hour backlit overcast sky, faceted rock shelves, scrub grass tufts, pine forests, barns, and wooden bridges.
+  - **Red Canyon**: Layered sandstone mesas, craggy rock outcrops, saguaro cacti, dust motes, and wooden trestle bridges.
   - **Frost Peaks**: Night alpine ridges, animated Aurora Borealis ribbons, snowfall, headlights, and low-grip ice patches.
   - **Moon Crater**: `0.38g` lunar gravity, deep crater bowls, starry sky, and extended aerial stunt hangtime.
 - **7 Playable 3D Vehicles & Profile-First Garage**:
-  - **Ranger**, **Monster**, **Buggy**, **Muscle**, **Superbike**, **Cheetah VC**, and **Donk Leonida** modeled procedurally in Three.js with articulated coilover shocks, lugged rotating axles, exhaust/nitro flame cones, dynamic off-road grime overlay, and spring-damped driver heads.
+  - **Ranger**, **Monster**, **Buggy**, **Muscle**, **Superbike**, **Cheetah VC**, and **Donk Leonida** modeled procedurally in Three.js with riveted fender flares, crisp door shutlines, expedition roof racks with X-taped rally floodlights, 7-coil coilover shocks, 20-lug mud-terrain tires with side-biter teeth, weathered paint micro-grain, dynamic off-road grime overlay, and sculpted human drivers.
   - Interactive 360° Garage showroom defaulting to side `PROFILE` view, with 8 paint swatches, 6 neon underglow kits, 7 liveries (including `Sticker Bomb` & `Viper Stripe`), 4 wheel styles, and 4 functional trail accessories (`Light Bar`, `Reinforced Bullbar`, `Whip Flag`, and `Ram-Air Snorkel` adding +4% engine torque & +3% top speed).
 - **Ghost Rival, Upgrades, Tuning Bench, Daily Challenge & Season 12 Progression**:
   - Subtle warm amber-gold Ghost Rival silhouette recording personal best runs per stage (`PLAYING` mode only, toggleable in Settings) with live `RIVAL +/-Xm` HUD delta.

@@ -13,8 +13,10 @@ import {
   createDirtOverlayTexture,
   createLicensePlateTexture,
   createLiveryTexture,
+  createRallyLightCoverTexture,
   createSoftGlowTexture,
   createTireBumpTexture,
+  createWeatheredPaintBumpTexture,
 } from './textures';
 
 export interface VehicleRig3D {
@@ -71,25 +73,30 @@ function buildWheelMesh(
 
   const tireMat = new THREE.MeshStandardMaterial({
     color: style.tireColor,
-    roughness: 0.86,
-    metalness: 0.05,
+    roughness: 0.88,
+    metalness: 0.04,
     bumpMap: tireBumpTex,
-    bumpScale: 0.035,
+    bumpScale: 0.055,
   });
   const treadMat = new THREE.MeshStandardMaterial({
-    color: '#23262d',
-    roughness: 0.92,
+    color: '#1b1e23',
+    roughness: 0.94,
     metalness: 0.04,
   });
   const rimMat = new THREE.MeshStandardMaterial({
     color: isDonk ? '#f8fafc' : style.rimColor,
-    roughness: isDonk ? 0.08 : style.roughness,
-    metalness: isDonk ? 0.96 : style.metalness,
+    roughness: isDonk ? 0.08 : Math.min(0.28, style.roughness),
+    metalness: isDonk ? 0.96 : Math.max(0.78, style.metalness),
+  });
+  const innerBarrelMat = new THREE.MeshStandardMaterial({
+    color: '#181c24',
+    roughness: 0.42,
+    metalness: 0.72,
   });
   const hubMat = new THREE.MeshStandardMaterial({
-    color: '#343b46',
-    roughness: 0.32,
-    metalness: 0.84,
+    color: '#2e3540',
+    roughness: 0.3,
+    metalness: 0.86,
   });
   const rotorMat = new THREE.MeshStandardMaterial({
     color: '#aeb6c4',
@@ -108,7 +115,7 @@ function buildWheelMesh(
   });
 
   // Main contoured tire carcass
-  const tireGeo = new THREE.CylinderGeometry(radius * 0.94, radius * 0.94, width, 28);
+  const tireGeo = new THREE.CylinderGeometry(radius * 0.92, radius * 0.92, width, 32);
   tireGeo.rotateX(Math.PI / 2);
   const tire = new THREE.Mesh(tireGeo, tireMat);
   tire.castShadow = true;
@@ -116,57 +123,81 @@ function buildWheelMesh(
   wheel.add(tire);
 
   // Sculpted sidewall torus shoulders
-  const sideRatio = isDonk ? 0.86 : 0.74;
-  const sideTube = isDonk ? 0.09 : 0.2;
-  const sideGeo = new THREE.TorusGeometry(radius * sideRatio, radius * sideTube, 12, 28);
+  const sideRatio = isDonk ? 0.86 : 0.73;
+  const sideTube = isDonk ? 0.09 : 0.21;
+  const sideGeo = new THREE.TorusGeometry(radius * sideRatio, radius * sideTube, 12, 32);
   const sideF = new THREE.Mesh(sideGeo, tireMat);
-  sideF.position.z = width * 0.33;
+  sideF.position.z = width * 0.32;
   const sideB = new THREE.Mesh(sideGeo, tireMat);
-  sideB.position.z = -width * 0.33;
+  sideB.position.z = -width * 0.32;
   wheel.add(sideF, sideB);
 
-  // Staggered off-road knobby tread blocks / sport tire ribs
-  const lugCount = isBike || isDonk ? 20 : 16;
+  // Aggressive mud-terrain knobby tread blocks + outer side-biter teeth
+  const lugCount = isBike || isDonk ? 22 : 20;
   const lugGeo = new THREE.BoxGeometry(
-    isBike || isDonk ? 0.055 : 0.13,
-    isDonk ? 0.04 : 0.085,
-    width * (isBike ? 0.62 : 0.42),
+    isBike || isDonk ? 0.05 : 0.145,
+    isDonk ? 0.04 : 0.095,
+    width * (isBike ? 0.62 : 0.48),
   );
+  const sideBiterGeo = new THREE.BoxGeometry(0.085, 0.065, 0.05);
   for (let i = 0; i < lugCount; i++) {
     const a = (i / lugCount) * Math.PI * 2;
     const lug = new THREE.Mesh(lugGeo, treadMat);
-    const zShift = isBike ? 0 : i % 2 === 0 ? width * 0.22 : -width * 0.22;
+    const zShift = isBike ? 0 : i % 2 === 0 ? width * 0.2 : -width * 0.2;
     lug.position.set(
       Math.cos(a) * radius * 0.94,
       Math.sin(a) * radius * 0.94,
       zShift,
     );
     lug.rotation.z = a + Math.PI / 2;
+    lug.rotation.y = isBike || isDonk ? 0 : i % 2 === 0 ? 0.22 : -0.22;
     lug.castShadow = true;
     wheel.add(lug);
+
+    if (!isBike && !isDonk) {
+      [-width * 0.48, width * 0.48].forEach((sbz) => {
+        const biter = new THREE.Mesh(sideBiterGeo, treadMat);
+        biter.position.set(
+          Math.cos(a) * radius * 0.86,
+          Math.sin(a) * radius * 0.86,
+          sbz,
+        );
+        biter.rotation.z = a + Math.PI / 2;
+        wheel.add(biter);
+      });
+    }
   }
 
   // Deep-dish stepped alloy rim barrel (oversized 28" dish on Leonida Donk)
-  const rimRadius = radius * (isDonk ? 0.78 : 0.56);
-  const rimLipGeo = new THREE.TorusGeometry(rimRadius * 0.96, 0.045, 8, 24);
+  const rimRadius = radius * (isDonk ? 0.78 : 0.54);
+  const rimLipGeo = new THREE.TorusGeometry(rimRadius * 0.96, 0.048, 10, 28);
   const lipF = new THREE.Mesh(rimLipGeo, rimMat);
-  lipF.position.z = width * 0.36;
+  lipF.position.z = width * 0.37;
   const lipB = new THREE.Mesh(rimLipGeo, rimMat);
-  lipB.position.z = -width * 0.36;
+  lipB.position.z = -width * 0.37;
   wheel.add(lipF, lipB);
 
-  const rimGeo = new THREE.CylinderGeometry(rimRadius, rimRadius, width * 0.74, 24);
+  // Outer polished deep dish step + recessed dark inner barrel
+  const dishRing = new THREE.Mesh(
+    new THREE.CylinderGeometry(rimRadius * 0.98, rimRadius * 0.88, width * 0.2, 28, 1, true),
+    rimMat,
+  );
+  dishRing.rotation.x = Math.PI / 2;
+  dishRing.position.z = width * 0.26;
+  wheel.add(dishRing);
+
+  const rimGeo = new THREE.CylinderGeometry(rimRadius * 0.88, rimRadius * 0.88, width * 0.68, 28);
   rimGeo.rotateX(Math.PI / 2);
-  const rim = new THREE.Mesh(rimGeo, rimMat);
+  const rim = new THREE.Mesh(rimGeo, isDonk ? rimMat : innerBarrelMat);
   wheel.add(rim);
 
   // Brake rotor disc + caliper tucked inside wheel barrel
   const rotor = new THREE.Mesh(
-    new THREE.CylinderGeometry(rimRadius * 0.72, rimRadius * 0.72, 0.05, 20),
+    new THREE.CylinderGeometry(rimRadius * 0.72, rimRadius * 0.72, 0.05, 22),
     rotorMat,
   );
   rotor.rotation.x = Math.PI / 2;
-  rotor.position.z = -width * 0.05;
+  rotor.position.z = -width * 0.04;
   wheel.add(rotor);
 
   const caliper = new THREE.Mesh(
@@ -177,36 +208,48 @@ function buildWheelMesh(
   caliper.rotation.z = 0.5;
   wheel.add(caliper);
 
-  // Sculpted wheel spokes
+  // Sculpted recessed wheel spokes
   const spokeCount = isDonk ? 10 : style.spokeCount;
-  const spokeGeo = new THREE.BoxGeometry(rimRadius * 1.84, isDonk ? 0.048 : 0.075, width * 0.16);
+  const spokeGeo = new THREE.BoxGeometry(rimRadius * 1.72, isDonk ? 0.048 : 0.072, width * 0.14);
   for (let s = 0; s < spokeCount; s++) {
     const spoke = new THREE.Mesh(spokeGeo, rimMat);
     spoke.rotation.z = (s / spokeCount) * Math.PI;
-    spoke.position.z = width * 0.25;
+    spoke.position.z = width * 0.19;
     wheel.add(spoke);
   }
 
-  // Beadlock / floating center cap bolts around rim lip
-  const beadCount = 10;
-  const boltGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.04, 6);
+  // Beadlock / outer lip bolts around rim perimeter
+  const beadCount = 12;
+  const boltGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.04, 6);
   boltGeo.rotateX(Math.PI / 2);
   for (let b = 0; b < beadCount; b++) {
     const a = (b / beadCount) * Math.PI * 2;
     const bolt = new THREE.Mesh(boltGeo, boltMat);
     bolt.position.set(
-      Math.cos(a) * rimRadius * 0.88,
-      Math.sin(a) * rimRadius * 0.88,
+      Math.cos(a) * rimRadius * 0.9,
+      Math.sin(a) * rimRadius * 0.9,
       width * 0.39,
     );
     wheel.add(bolt);
   }
 
   // Center locking hub & 5 lug nuts
-  const hubGeo = new THREE.CylinderGeometry(rimRadius * 0.32, rimRadius * 0.36, width * 0.86, 16);
+  const hubGeo = new THREE.CylinderGeometry(rimRadius * 0.31, rimRadius * 0.35, width * 0.74, 16);
   hubGeo.rotateX(Math.PI / 2);
   const hub = new THREE.Mesh(hubGeo, isDonk ? rimMat : hubMat);
+  hub.position.z = width * 0.04;
   wheel.add(hub);
+
+  for (let l = 0; l < 5; l++) {
+    const a = (l / 5) * Math.PI * 2;
+    const lugNut = new THREE.Mesh(boltGeo, boltMat);
+    lugNut.position.set(
+      Math.cos(a) * rimRadius * 0.21,
+      Math.sin(a) * rimRadius * 0.21,
+      width * 0.36,
+    );
+    wheel.add(lugNut);
+  }
 
   return wheel;
 }
@@ -215,32 +258,36 @@ function buildCoiloverShock(paintAccent: string): THREE.Group {
   const g = new THREE.Group();
   const shaftMat = new THREE.MeshStandardMaterial({
     color: '#e2e8f0',
-    metalness: 0.92,
-    roughness: 0.14,
+    metalness: 0.94,
+    roughness: 0.12,
   });
   const bodyMat = new THREE.MeshStandardMaterial({
-    color: '#334155',
+    color: '#1e2430',
     metalness: 0.78,
-    roughness: 0.3,
-  });
-  const coilMat = new THREE.MeshStandardMaterial({
-    color: paintAccent,
-    metalness: 0.38,
     roughness: 0.28,
   });
+  const coilMat = new THREE.MeshStandardMaterial({
+    color: paintAccent === '#ff6954' ? '#dc2626' : paintAccent,
+    metalness: 0.32,
+    roughness: 0.24,
+  });
 
-  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 1, 10), shaftMat);
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 1, 10), shaftMat);
   rod.position.y = 0.5;
   g.add(rod);
 
-  const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.42, 10), bodyMat);
-  sleeve.position.y = 0.76;
+  const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.064, 0.064, 0.44, 10), bodyMat);
+  sleeve.position.y = 0.75;
   g.add(sleeve);
 
-  for (let i = 0; i < 6; i++) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.023, 7, 14), coilMat);
-    ring.rotation.x = Math.PI / 2 + 0.15;
-    ring.position.y = 0.16 + i * 0.125;
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.088, 0.088, 0.06, 12), shaftMat);
+  collar.position.y = 0.88;
+  g.add(collar);
+
+  for (let i = 0; i < 7; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.088, 0.024, 8, 16), coilMat);
+    ring.rotation.x = Math.PI / 2 + 0.14;
+    ring.position.y = 0.14 + i * 0.108;
     g.add(ring);
   }
   return g;
@@ -257,65 +304,54 @@ function buildDriver(
 } {
   const driver = new THREE.Group();
 
+  // Realistic trail denim/utility jacket & jeans instead of bright toy plastic
   const jacketMat = new THREE.MeshStandardMaterial({
-    color: isBike ? '#192130' : '#b91c1c',
-    roughness: 0.74,
-    metalness: 0.08,
+    color: isBike ? '#192130' : '#323a46',
+    roughness: 0.78,
+    metalness: 0.05,
   });
   const jeansMat = new THREE.MeshStandardMaterial({
-    color: '#1e293b',
-    roughness: 0.85,
+    color: '#1b2434',
+    roughness: 0.86,
     metalness: 0.04,
   });
   const bootMat = new THREE.MeshStandardMaterial({
-    color: '#111827',
-    roughness: 0.55,
-    metalness: 0.15,
-  });
-  const skinMat = new THREE.MeshStandardMaterial({
-    color: '#e5a982',
-    roughness: 0.58,
-    metalness: 0.02,
-  });
-  const gloveMat = new THREE.MeshStandardMaterial({
-    color: '#18181b',
-    roughness: 0.52,
+    color: '#11161d',
+    roughness: 0.6,
     metalness: 0.12,
   });
-  const harnessMat = new THREE.MeshStandardMaterial({
-    color: '#facc15',
-    roughness: 0.6,
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: '#dba07c',
+    roughness: 0.62,
+    metalness: 0.02,
+  });
+  const hairMat = new THREE.MeshStandardMaterial({
+    color: '#342218',
+    roughness: 0.88,
+    metalness: 0.04,
+  });
+  const gloveMat = new THREE.MeshStandardMaterial({
+    color: '#1a1c20',
+    roughness: 0.56,
     metalness: 0.1,
   });
-  const helmetMat = new THREE.MeshPhysicalMaterial({
-    color: isBike ? primaryHex : '#dc2626',
-    roughness: 0.2,
-    metalness: 0.3,
-    clearcoat: 0.9,
-  });
-  const visorMat = new THREE.MeshPhysicalMaterial({
-    color: '#0f172a',
-    roughness: 0.08,
-    metalness: 0.65,
-    clearcoat: 1.0,
-    iridescence: isBike ? 0.85 : 0.25,
-  });
-  const goggleStrapMat = new THREE.MeshStandardMaterial({
-    color: '#1e293b',
-    roughness: 0.8,
+  const harnessMat = new THREE.MeshStandardMaterial({
+    color: '#202630',
+    roughness: 0.7,
+    metalness: 0.08,
   });
 
-  const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.16, 0.34), jeansMat);
+  const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.32), jeansMat);
   pelvis.position.set(0, 0.06, 0);
   driver.add(pelvis);
 
-  [-0.12, 0.12].forEach((zLeg) => {
-    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.078, 0.28, 5, 10), jeansMat);
+  [-0.11, 0.11].forEach((zLeg) => {
+    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.074, 0.28, 5, 10), jeansMat);
     thigh.position.set(isBike ? 0.12 : 0.2, 0.04, zLeg);
     thigh.rotation.z = isBike ? -1.15 : -1.38;
     driver.add(thigh);
 
-    const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.26, 5, 10), jeansMat);
+    const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, 0.26, 5, 10), jeansMat);
     shin.position.set(isBike ? 0.15 : 0.4, -0.14, zLeg);
     shin.rotation.z = isBike ? 0.25 : -0.22;
     driver.add(shin);
@@ -330,123 +366,151 @@ function buildDriver(
   driver.add(torsoGroup);
 
   const chest = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.19, 0.145, 0.42, 12),
+    new THREE.CylinderGeometry(0.185, 0.142, 0.42, 14),
     jacketMat,
   );
   chest.position.set(0, 0.22, 0);
-  chest.scale.set(0.86, 1, 1.18);
-  chest.rotation.z = isBike ? -0.46 : -0.12;
+  chest.scale.set(0.84, 1, 1.15);
+  chest.rotation.z = isBike ? -0.46 : -0.1;
   chest.castShadow = true;
   torsoGroup.add(chest);
 
   const collar = new THREE.Mesh(
-    new THREE.TorusGeometry(0.11, 0.035, 6, 12),
-    bootMat,
+    new THREE.TorusGeometry(0.1, 0.03, 6, 14),
+    jacketMat,
   );
   collar.rotation.x = Math.PI / 2;
   collar.position.set(isBike ? 0.09 : 0.02, 0.43, 0);
   torsoGroup.add(collar);
 
-  [-0.1, 0.1].forEach((zStrap) => {
+  [-0.09, 0.09].forEach((zStrap) => {
     const strap = new THREE.Mesh(
-      new THREE.BoxGeometry(0.045, 0.36, 0.055),
+      new THREE.BoxGeometry(0.038, 0.35, 0.048),
       isBike ? jacketMat : harnessMat,
     );
-    strap.position.set(isBike ? 0.1 : 0.09, 0.24, zStrap);
-    strap.rotation.z = isBike ? -0.46 : -0.12;
+    strap.position.set(isBike ? 0.1 : 0.085, 0.24, zStrap);
+    strap.rotation.z = isBike ? -0.46 : -0.1;
     torsoGroup.add(strap);
   });
 
-  [-0.21, 0.21].forEach((zSide) => {
-    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.072, 10, 8), jacketMat);
+  [-0.2, 0.2].forEach((zSide) => {
+    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.068, 10, 8), jacketMat);
     shoulder.position.set(isBike ? 0.06 : 0.0, 0.36, zSide);
     torsoGroup.add(shoulder);
 
-    const upperArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.056, 0.2, 5, 8), jacketMat);
+    const upperArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.052, 0.2, 5, 8), jacketMat);
     upperArm.position.set(isBike ? 0.18 : 0.14, 0.28, zSide);
     upperArm.rotation.z = isBike ? -0.95 : -0.92;
     torsoGroup.add(upperArm);
 
-    const forearm = new THREE.Mesh(new THREE.CapsuleGeometry(0.048, 0.2, 5, 8), jacketMat);
+    const forearm = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.044, 0.2, 5, 8),
+      isBike ? jacketMat : skinMat,
+    );
     forearm.position.set(isBike ? 0.34 : 0.32, 0.24, zSide * 0.85);
     forearm.rotation.z = isBike ? -1.42 : -1.25;
     torsoGroup.add(forearm);
 
-    const glove = new THREE.Mesh(new THREE.SphereGeometry(0.058, 10, 8), gloveMat);
+    const glove = new THREE.Mesh(
+      new THREE.SphereGeometry(0.052, 10, 8),
+      isBike ? gloveMat : skinMat,
+    );
     glove.position.set(isBike ? 0.46 : 0.44, 0.26, zSide * 0.72);
     torsoGroup.add(glove);
   });
 
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.075, 0.12, 10), skinMat);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.068, 0.13, 12), skinMat);
   neck.position.set(isBike ? 0.1 : 0.02, 0.46, 0);
   torsoGroup.add(neck);
 
   const headGroup = new THREE.Group();
-  headGroup.position.set(isBike ? 0.14 : 0.03, isBike ? 0.54 : 0.58, 0);
+  headGroup.position.set(isBike ? 0.14 : 0.03, isBike ? 0.54 : 0.59, 0);
   torsoGroup.add(headGroup);
 
-  const cranium = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 14), skinMat);
-  cranium.scale.set(1.04, 1.08, 0.94);
+  const cranium = new THREE.Mesh(new THREE.SphereGeometry(0.15, 18, 16), skinMat);
+  cranium.scale.set(1.02, 1.12, 0.88);
   cranium.castShadow = true;
   headGroup.add(cranium);
 
-  const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.11, 0.19), skinMat);
-  jaw.position.set(0.05, -0.09, 0);
-  jaw.rotation.z = -0.15;
+  const jaw = new THREE.Mesh(new THREE.CylinderGeometry(0.092, 0.072, 0.12, 10), skinMat);
+  jaw.position.set(0.04, -0.095, 0);
+  jaw.rotation.z = 0.24;
   headGroup.add(jaw);
 
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.026, 0.065, 6), skinMat);
-  nose.rotation.z = -Math.PI / 2.2;
-  nose.position.set(0.18, -0.02, 0);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.058, 6), skinMat);
+  nose.rotation.z = -Math.PI / 2.15;
+  nose.position.set(0.155, -0.018, 0);
   headGroup.add(nose);
 
-  const shell = new THREE.Mesh(
-    new THREE.SphereGeometry(0.198, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.62),
-    helmetMat,
-  );
-  shell.position.y = 0.02;
-  shell.castShadow = true;
-  headGroup.add(shell);
-
-  const stripe = new THREE.Mesh(
-    new THREE.BoxGeometry(0.32, 0.04, 0.06),
-    new THREE.MeshStandardMaterial({ color: accentHex, roughness: 0.25 }),
-  );
-  stripe.position.set(-0.02, 0.2, 0);
-  headGroup.add(stripe);
-
-  const peak = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.26), helmetMat);
-  peak.position.set(0.16, 0.12, 0);
-  peak.rotation.z = -0.18;
-  headGroup.add(peak);
-
-  const goggleBand = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.196, 0.196, 0.06, 16, 1, true),
-    goggleStrapMat,
-  );
-  goggleBand.position.set(-0.01, 0.02, 0);
-  headGroup.add(goggleBand);
-
-  const goggles = new THREE.Mesh(
-    new THREE.BoxGeometry(0.11, 0.085, 0.27),
-    visorMat,
-  );
-  goggles.position.set(0.15, 0.025, 0);
-  headGroup.add(goggles);
-
   if (isBike) {
-    const chinBar = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.11, 0.28), helmetMat);
-    chinBar.position.set(0.13, -0.1, 0);
+    // Full-face racing moto helmet for superbike
+    const helmetMat = new THREE.MeshPhysicalMaterial({
+      color: primaryHex,
+      roughness: 0.2,
+      metalness: 0.3,
+      clearcoat: 0.9,
+    });
+    const visorMat = new THREE.MeshPhysicalMaterial({
+      color: '#0f172a',
+      roughness: 0.08,
+      metalness: 0.65,
+      clearcoat: 1.0,
+      iridescence: 0.85,
+    });
+    const shell = new THREE.Mesh(
+      new THREE.SphereGeometry(0.188, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.64),
+      helmetMat,
+    );
+    shell.position.y = 0.02;
+    shell.castShadow = true;
+    headGroup.add(shell);
+
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.038, 0.055),
+      new THREE.MeshStandardMaterial({ color: accentHex, roughness: 0.25 }),
+    );
+    stripe.position.set(-0.02, 0.19, 0);
+    headGroup.add(stripe);
+
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.085, 0.25), visorMat);
+    visor.position.set(0.145, 0.025, 0);
+    headGroup.add(visor);
+
+    const chinBar = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.1, 0.26), helmetMat);
+    chinBar.position.set(0.125, -0.09, 0);
     headGroup.add(chinBar);
   } else {
-    [-0.18, 0.18].forEach((zEar) => {
-      const earCup = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.055, 0.055, 0.035, 10),
-        goggleStrapMat,
-      );
-      earCup.rotation.x = Math.PI / 2;
-      earCup.position.set(-0.01, -0.02, zEar);
-      headGroup.add(earCup);
+    // Natural sculpted hair, brow ridge, eyes & subtle facial beard stubble for 4x4/car driver
+    const hairCrown = new THREE.Mesh(
+      new THREE.SphereGeometry(0.162, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.56),
+      hairMat,
+    );
+    hairCrown.scale.set(1.04, 1.08, 0.91);
+    hairCrown.position.set(-0.015, 0.028, 0);
+    hairCrown.rotation.z = 0.22;
+    headGroup.add(hairCrown);
+
+    const hairQuiff = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.075, 0.21), hairMat);
+    hairQuiff.position.set(0.085, 0.125, 0);
+    hairQuiff.rotation.z = -0.24;
+    headGroup.add(hairQuiff);
+
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.022, 0.16), hairMat);
+    brow.position.set(0.132, 0.036, 0);
+    headGroup.add(brow);
+
+    const eyeMat = new THREE.MeshStandardMaterial({ color: '#111827', roughness: 0.35 });
+    [-0.048, 0.048].forEach((ez) => {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 6), eyeMat);
+      eye.position.set(0.14, 0.012, ez);
+      headGroup.add(eye);
+    });
+
+    [-0.135, 0.135].forEach((zEar) => {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 8), skinMat);
+      ear.scale.set(0.55, 1.15, 0.45);
+      ear.position.set(-0.01, -0.01, zEar);
+      headGroup.add(ear);
     });
   }
 
@@ -469,17 +533,28 @@ export function buildVehicle3D(
   root.add(chassisGroup);
 
   const tireBumpTex = createTireBumpTexture(maxAniso);
+  const paintBumpTex = createWeatheredPaintBumpTexture(maxAniso);
+  const rallyCoverTex = createRallyLightCoverTexture(maxAniso);
   const plateTex = createLicensePlateTexture('JACK-06', maxAniso);
   const neonGlowTex = createSoftGlowTexture();
   const dirtTex = createDirtOverlayTexture(maxAniso);
-  const disposableTextures: THREE.Texture[] = [tireBumpTex, plateTex, neonGlowTex, dirtTex];
+  const disposableTextures: THREE.Texture[] = [
+    tireBumpTex,
+    paintBumpTex,
+    rallyCoverTex,
+    plateTex,
+    neonGlowTex,
+    dirtTex,
+  ];
 
   const paintMat = new THREE.MeshPhysicalMaterial({
     color: paint.primary,
     metalness: paint.metalness,
     roughness: paint.roughness,
     clearcoat: paint.clearcoat,
-    clearcoatRoughness: 0.11,
+    clearcoatRoughness: 0.14,
+    bumpMap: paintBumpTex,
+    bumpScale: 0.012,
   });
   const secondaryMat = new THREE.MeshStandardMaterial({
     color: paint.secondary,
@@ -487,9 +562,9 @@ export function buildVehicle3D(
     roughness: 0.38,
   });
   const darkMetalMat = new THREE.MeshStandardMaterial({
-    color: '#1b2029',
-    metalness: 0.76,
-    roughness: 0.38,
+    color: '#191d25',
+    metalness: 0.78,
+    roughness: 0.36,
   });
   const forgedCarbonMat = new THREE.MeshStandardMaterial({
     color: '#141821',
@@ -497,9 +572,9 @@ export function buildVehicle3D(
     roughness: 0.58,
   });
   const matteTrimMat = new THREE.MeshStandardMaterial({
-    color: '#14171f',
-    metalness: 0.15,
-    roughness: 0.82,
+    color: '#13161d',
+    metalness: 0.16,
+    roughness: 0.84,
   });
   const chromeMat = new THREE.MeshStandardMaterial({
     color: '#edf2f7',
@@ -507,17 +582,17 @@ export function buildVehicle3D(
     roughness: 0.12,
   });
   const glassMat = new THREE.MeshPhysicalMaterial({
-    color: '#a8dcff',
-    metalness: 0.05,
-    roughness: 0.08,
+    color: '#d8eefc',
+    metalness: 0.04,
+    roughness: 0.05,
     clearcoat: 1.0,
     transparent: true,
-    opacity: 0.56,
+    opacity: 0.34,
   });
   const interiorMat = new THREE.MeshStandardMaterial({
-    color: '#1f242e',
-    roughness: 0.78,
-    metalness: 0.12,
+    color: '#1b1f27',
+    roughness: 0.8,
+    metalness: 0.1,
   });
   const headlightMat = new THREE.MeshStandardMaterial({
     color: '#fffef0',
@@ -920,73 +995,133 @@ export function buildVehicle3D(
     });
   }
 
-  // Ranger & Monster heavy off-road hardware
+  // Sharp Panel Shutlines, Door Handles & Rocker Trim (all enclosed 4-wheelers)
+  if (!isBike && config.id !== 'buggy') {
+    [-bodyDepth * 0.5 - 0.068, bodyDepth * 0.5 + 0.068].forEach((zSide) => {
+      // Door handle
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 0.045), matteTrimMat);
+      handle.position.set(-0.22, isCheetah ? 0.16 : 0.25, zSide);
+      chassisGroup.add(handle);
+
+      // Vertical front & rear door shutline seams
+      const seamF = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.52, 0.02), matteTrimMat);
+      seamF.position.set(0.46, isCheetah ? 0.08 : 0.14, zSide);
+      const seamR = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.52, 0.02), matteTrimMat);
+      seamR.position.set(-0.48, isCheetah ? 0.08 : 0.14, zSide);
+      // Horizontal lower body crease trim
+      const rubStrip = new THREE.Mesh(
+        new THREE.BoxGeometry(config.chassisLength * 0.68, 0.045, 0.025),
+        matteTrimMat,
+      );
+      rubStrip.position.set(-0.04, isCheetah ? -0.02 : 0.02, zSide);
+      chassisGroup.add(seamF, seamR, rubStrip);
+    });
+  }
+
+  // Ranger & Monster heavy off-road hardware (Riveted Fender Flares, Stinger Bumper, Fog Pods, Grille)
   if (config.id === 'ranger' || config.id === 'monster') {
+    const rivetGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.05, 6);
+    rivetGeo.rotateX(Math.PI / 2);
     [-config.wheelbase * 0.5, config.wheelbase * 0.5].forEach((wx) => {
-      [-bodyDepth * 0.53, bodyDepth * 0.53].forEach((wz) => {
+      [-bodyDepth * 0.54, bodyDepth * 0.54].forEach((wz) => {
         const arch = new THREE.Mesh(
-          new THREE.TorusGeometry(config.wheelRadius * 1.14, 0.1, 8, 16, Math.PI),
+          new THREE.TorusGeometry(config.wheelRadius * 1.14, 0.11, 8, 18, Math.PI),
           matteTrimMat,
         );
         arch.position.set(wx, -0.02, wz);
         arch.castShadow = true;
         chassisGroup.add(arch);
+
+        // Exposed silver fender flare rivets
+        for (let r = 1; r <= 5; r++) {
+          const ang = (r / 6) * Math.PI;
+          const riv = new THREE.Mesh(rivetGeo, chromeMat);
+          riv.position.set(
+            wx + Math.cos(ang) * config.wheelRadius * 1.12,
+            -0.02 + Math.sin(ang) * config.wheelRadius * 1.12,
+            wz + Math.sign(wz) * 0.095,
+          );
+          chassisGroup.add(riv);
+        }
       });
     });
 
     [-bodyDepth * 0.54, bodyDepth * 0.54].forEach((sz) => {
-      const slider = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.08, 0.14), darkMetalMat);
+      const slider = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.085, 0.15), darkMetalMat);
       slider.position.set(0, -0.14, sz);
       chassisGroup.add(slider);
     });
 
-    const frontX = config.id === 'ranger' ? 1.96 : 2.14;
+    const frontX = config.id === 'ranger' ? 1.98 : 2.16;
     const bumper = new THREE.Mesh(
-      new THREE.BoxGeometry(0.26, 0.22, bodyDepth * 1.12),
+      new THREE.BoxGeometry(0.3, 0.24, bodyDepth * 1.14),
       darkMetalMat,
     );
-    bumper.position.set(frontX, 0.02, 0);
+    bumper.position.set(frontX, 0.0, 0);
     bumper.castShadow = true;
     chassisGroup.add(bumper);
 
+    // Welded steel stinger guard & twin bumper fog pods
     const bullBar = new THREE.Mesh(
       makeTube(
         [
-          [frontX + 0.04, 0.1, -0.45],
-          [frontX + 0.12, 0.44, -0.35],
-          [frontX + 0.12, 0.44, 0.35],
-          [frontX + 0.04, 0.1, 0.45],
+          [frontX + 0.06, 0.08, -0.46],
+          [frontX + 0.24, 0.42, -0.34],
+          [frontX + 0.24, 0.42, 0.34],
+          [frontX + 0.06, 0.08, 0.46],
         ],
-        0.04,
+        0.042,
       ),
       darkMetalMat,
     );
     chassisGroup.add(bullBar);
 
-    [-0.42, 0.42].forEach((tz) => {
+    const fogMat = new THREE.MeshStandardMaterial({
+      color: '#e2e8f0',
+      emissive: '#fef3c7',
+      emissiveIntensity: 1.4,
+      roughness: 0.18,
+    });
+    [-0.18, 0.18].forEach((fz) => {
+      const podShell = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.11, 0.11, 0.1, 12),
+        darkMetalMat,
+      );
+      podShell.rotation.z = Math.PI / 2;
+      podShell.position.set(frontX + 0.12, 0.24, fz);
+      const podLens = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.085, 0.085, 0.04, 12),
+        fogMat,
+      );
+      podLens.rotation.z = Math.PI / 2;
+      podLens.position.set(frontX + 0.16, 0.24, fz);
+      chassisGroup.add(podShell, podLens);
+    });
+
+    [-0.44, 0.44].forEach((tz) => {
       const hook = new THREE.Mesh(
         new THREE.TorusGeometry(0.06, 0.022, 6, 10),
-        new THREE.MeshStandardMaterial({ color: '#ef4444', roughness: 0.4, metalness: 0.5 }),
+        new THREE.MeshStandardMaterial({ color: '#dc2626', roughness: 0.4, metalness: 0.5 }),
       );
-      hook.position.set(frontX + 0.14, 0.0, tz);
+      hook.position.set(frontX + 0.18, -0.02, tz);
       chassisGroup.add(hook);
     });
 
     const radCore = new THREE.Mesh(
-      new THREE.BoxGeometry(0.05, 0.34, bodyDepth * 0.62),
+      new THREE.BoxGeometry(0.06, 0.38, bodyDepth * 0.94),
       matteTrimMat,
     );
     radCore.position.set(frontX - 0.06, 0.28, 0);
     chassisGroup.add(radCore);
 
     for (let s = -3; s <= 3; s++) {
-      const slat = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.055), chromeMat);
-      slat.position.set(frontX - 0.02, 0.28, s * 0.13);
+      const slat = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.3, 0.048), darkMetalMat);
+      slat.position.set(frontX - 0.02, 0.28, s * 0.1);
       chassisGroup.add(slat);
     }
 
     const rearBumper = new THREE.Mesh(
-      new THREE.BoxGeometry(0.22, 0.2, bodyDepth * 1.08),
+      new THREE.BoxGeometry(0.24, 0.2, bodyDepth * 1.1),
       darkMetalMat,
     );
     rearBumper.position.set(-config.chassisLength * 0.52, 0.02, 0);
@@ -994,15 +1129,15 @@ export function buildVehicle3D(
 
     if (config.id === 'ranger') {
       const spare = buildWheelMesh(
-        config.wheelRadius * 0.8,
-        0.32,
+        config.wheelRadius * 0.82,
+        0.34,
         wheelStyle,
         false,
         tireBumpTex,
         '#dc2626',
       );
       spare.rotation.y = Math.PI / 2;
-      spare.position.set(-2.02, 0.38, 0);
+      spare.position.set(-2.04, 0.38, 0);
       chassisGroup.add(spare);
     }
   }
@@ -1185,17 +1320,60 @@ export function buildVehicle3D(
     });
 
     if (config.id !== 'buggy' && hasAcc('lightbar')) {
-      const barHousing = new THREE.Mesh(
-        new THREE.BoxGeometry(0.14, 0.1, bodyDepth * 0.72),
+      // Heavy tubular expedition roof rack + recovery gear + 4 X-taped rally floodlights
+      const rackY = cageH + 0.08;
+      const rackFrame = new THREE.Mesh(
+        new THREE.BoxGeometry(1.56, 0.06, bodyDepth * 0.84),
         darkMetalMat,
       );
-      barHousing.position.set(0.32, cageH + 0.08, 0);
-      chassisGroup.add(barHousing);
+      rackFrame.position.set(-0.28, rackY, 0);
+      chassisGroup.add(rackFrame);
 
-      for (let l = -2; l <= 2; l++) {
-        const pod = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.07, 0.14), headlightMat);
-        pod.position.set(0.39, cageH + 0.08, l * 0.22);
-        chassisGroup.add(pod);
+      [-bodyDepth * 0.41, bodyDepth * 0.41].forEach((rz) => {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.14, 0.045), darkMetalMat);
+        rail.position.set(-0.28, rackY + 0.09, rz);
+        chassisGroup.add(rail);
+      });
+      const rearRail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.045, 0.14, bodyDepth * 0.84),
+        darkMetalMat,
+      );
+      rearRail.position.set(-1.05, rackY + 0.09, 0);
+      chassisGroup.add(rearRail);
+
+      // Strapped orange/charcoal traction recovery boards + cargo pack inside rack
+      const cargoPack = new THREE.Mesh(
+        new THREE.BoxGeometry(0.95, 0.13, bodyDepth * 0.58),
+        new THREE.MeshStandardMaterial({ color: '#1e242d', roughness: 0.85 }),
+      );
+      cargoPack.position.set(-0.46, rackY + 0.09, 0);
+      const recoveryBoard = new THREE.Mesh(
+        new THREE.BoxGeometry(0.88, 0.05, 0.34),
+        new THREE.MeshStandardMaterial({ color: '#ea580c', roughness: 0.72 }),
+      );
+      recoveryBoard.position.set(-0.42, rackY + 0.18, 0.18);
+      chassisGroup.add(cargoPack, recoveryBoard);
+
+      // 4 Iconic Round X-Taped Rally Floodlights along roof rack brow
+      const rallyFaceMat = new THREE.MeshStandardMaterial({
+        map: rallyCoverTex,
+        roughness: 0.35,
+        metalness: 0.25,
+      });
+      for (let l = 0; l < 4; l++) {
+        const lz = -0.45 + l * 0.3;
+        const can = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.125, 0.11, 0.14, 14),
+          darkMetalMat,
+        );
+        can.rotation.z = Math.PI / 2;
+        can.position.set(0.45, rackY + 0.14, lz);
+        can.castShadow = true;
+
+        const face = new THREE.Mesh(new THREE.CircleGeometry(0.118, 16), rallyFaceMat);
+        face.rotation.y = Math.PI / 2;
+        face.position.set(0.525, rackY + 0.14, lz);
+        chassisGroup.add(can, face);
       }
     }
   } else if (!isBike && hasAcc('lightbar')) {

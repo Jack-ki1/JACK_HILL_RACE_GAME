@@ -129,7 +129,7 @@ export class WorldSceneController {
   private container: HTMLElement;
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
-  private camera: THREE.OrthographicCamera;
+  private camera: THREE.PerspectiveCamera;
   private isSoftwareGl: boolean;
   private maxAniso: number;
   private frameId = 0;
@@ -147,6 +147,11 @@ export class WorldSceneController {
     topColor: { value: THREE.Color };
     bottomColor: { value: THREE.Color };
     sunGlowColor: { value: THREE.Color };
+    cloudDark: { value: THREE.Color };
+    cloudLit: { value: THREE.Color };
+    sunDir: { value: THREE.Vector2 };
+    overcastMix: { value: number };
+    time: { value: number };
   };
   private sunDisc: THREE.Mesh;
   private earthDisc: THREE.Mesh;
@@ -215,13 +220,15 @@ export class WorldSceneController {
   private input: InputState = { gas: false, brake: false, nitro: false, handbrake: false };
   private mode: WorldMode = 'TITLE';
 
-  // Orthographic Camera framing
-  private camX = START_X + 2;
+  // Perspective Camera framing (3/4 Hero Crawl on TITLE, crisp 2.5D follow on PLAYING)
+  private camX = START_X + 62;
   private camY = 3;
   private camZoom = 1.0;
   private dynamicOrthoScale = 1.0;
   private shakeScale = 1.0;
   private contactShadowMesh: THREE.Mesh;
+  private heroLookTarget = new THREE.Vector3(START_X + 64, 2, 0);
+  private titleRockGroup: THREE.Group;
 
   // External hooks
   private onTickCallback: ((dt: number, physics: HillClimbPhysics | null) => void) | null = null;
@@ -273,23 +280,23 @@ export class WorldSceneController {
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
 
-    this.camera = new THREE.OrthographicCamera(-12, 12, 7.5, -7.5, 0.5, 340);
-    this.camera.position.set(this.camX, this.camY, 45);
-    this.camera.lookAt(this.camX, this.camY, 0);
-    this.updateOrthoFrustum();
+    this.camera = new THREE.PerspectiveCamera(38, w / h, 0.5, 520);
+    this.camera.position.set(this.camX + 7.2, this.camY + 0.8, 6.2);
+    this.camera.lookAt(this.camX + 2.2, this.camY + 1.0, 0);
+    this.updatePerspectiveProjection();
 
-    // 3-Point Natural Outdoor Lighting Rig
-    this.hemiLight = new THREE.HemisphereLight('#8fd2ff', '#4a5a2b', 1.05);
+    // 3-Point High-Contrast Outdoor Crawling Lighting Rig
+    this.hemiLight = new THREE.HemisphereLight('#a8c7e0', '#3d281a', 0.88);
     this.scene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight('#fff3d6', 2.45);
-    this.sunLight.position.set(18, 28, 16);
+    this.sunLight = new THREE.DirectionalLight('#ffedd1', 2.75);
+    this.sunLight.position.set(-22, 24, 18);
     this.sunLight.castShadow = !this.isSoftwareGl;
     this.sunLight.shadow.mapSize.width = 1024;
     this.sunLight.shadow.mapSize.height = 1024;
     this.sunLight.shadow.camera.near = 2;
-    this.sunLight.shadow.camera.far = 90;
-    const d = 26;
+    this.sunLight.shadow.camera.far = 96;
+    const d = 28;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
@@ -299,18 +306,23 @@ export class WorldSceneController {
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
 
-    this.rimLight = new THREE.DirectionalLight('#ffffff', 0.76);
-    this.rimLight.position.set(-14, 10, -18);
+    this.rimLight = new THREE.DirectionalLight('#ffd7a8', 0.92);
+    this.rimLight.position.set(16, 12, -18);
     this.scene.add(this.rimLight);
 
-    // Atmospheric Sky Backdrop with Rayleigh Sun Scattering Glow
+    // Atmospheric Sky Backdrop with FBM Cloud Deck, Golden-Hour Sun Break & Contrails
     this.skyUniforms = {
       topColor: { value: new THREE.Color('#2476cf') },
       bottomColor: { value: new THREE.Color('#bfe6ff') },
       sunGlowColor: { value: new THREE.Color('#ffe8b5') },
+      cloudDark: { value: new THREE.Color('#3b3938') },
+      cloudLit: { value: new THREE.Color('#f7d5a8') },
+      sunDir: { value: new THREE.Vector2(0.18, 0.56) },
+      overcastMix: { value: 0.72 },
+      time: { value: 0 },
     };
     this.skyMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(520, 320),
+      new THREE.PlaneGeometry(920, 440),
       new THREE.ShaderMaterial({
         uniforms: this.skyUniforms,
         depthWrite: false,
@@ -326,19 +338,80 @@ export class WorldSceneController {
           uniform vec3 topColor;
           uniform vec3 bottomColor;
           uniform vec3 sunGlowColor;
+          uniform vec3 cloudDark;
+          uniform vec3 cloudLit;
+          uniform vec2 sunDir;
+          uniform float overcastMix;
+          uniform float time;
           varying vec2 vUv;
+
+          float hash21(vec2 p) {
+            p = fract(p * vec2(123.34, 456.21));
+            p += dot(p, p + 45.32);
+            return fract(p.x * p.y);
+          }
+
+          float vnoise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            float a = hash21(i);
+            float b = hash21(i + vec2(1.0, 0.0));
+            float c = hash21(i + vec2(0.0, 1.0));
+            float d = hash21(i + vec2(1.0, 1.0));
+            return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+          }
+
+          float fbm(vec2 p) {
+            float v = 0.0;
+            float a = 0.52;
+            mat2 rot = mat2(0.82, 0.57, -0.57, 0.82);
+            for (int i = 0; i < 5; i++) {
+              v += a * vnoise(p);
+              p = rot * p * 2.05 + vec2(11.3, 5.7);
+              a *= 0.48;
+            }
+            return v;
+          }
+
           void main() {
             float h = clamp(vUv.y, 0.0, 1.0);
-            vec3 sky = mix(bottomColor, topColor, pow(h, 0.68));
-            float sunDist = distance(vUv, vec2(0.62, 0.66));
-            float scatter = exp(-sunDist * 5.2) * 0.28;
-            sky += sunGlowColor * scatter;
+            vec3 sky = mix(bottomColor, topColor, pow(h, 0.62));
+
+            // Golden-hour / biome Rayleigh solar break
+            vec2 aspectUv = vec2(vUv.x * 1.85, vUv.y);
+            vec2 sunPos = vec2(sunDir.x * 1.85, sunDir.y);
+            float sunDist = distance(aspectUv, sunPos);
+            float wideGlow = exp(-sunDist * 2.6) * 0.52;
+            float coreGlow = exp(-sunDist * 14.0) * 0.85;
+            sky += sunGlowColor * (wideGlow + coreGlow);
+
+            // Subtle high-altitude contrails across sunlit upper sky
+            if (overcastMix > 0.05) {
+              float c1 = exp(-abs((vUv.y - 0.82) + (vUv.x - 0.25) * 0.14) * 320.0);
+              float c2 = exp(-abs((vUv.y - 0.78) + (vUv.x - 0.22) * 0.13) * 360.0);
+              sky += cloudLit * (c1 * 0.12 + c2 * 0.08) * smoothstep(0.5, 0.8, h);
+
+              // Volumetric stratified cloud deck
+              vec2 cloudUv = vec2(vUv.x * 4.8 + time * 0.004, (vUv.y - 0.44) * 9.5);
+              float cNoise = fbm(cloudUv);
+              float cDetail = fbm(cloudUv * 2.4 + vec2(3.1, -1.7));
+              float cloudMask = smoothstep(0.38, 0.76, cNoise * 0.78 + cDetail * 0.28);
+              float skyHeightFade = smoothstep(0.45, 0.68, h);
+              float sunRim = exp(-sunDist * 3.4);
+              vec3 cColor = mix(cloudDark, cloudLit, clamp(0.18 + (1.0 - cNoise) * 0.55 + sunRim * 0.72, 0.0, 1.0));
+              sky = mix(sky, cColor, cloudMask * skyHeightFade * overcastMix);
+            }
+
+            // Crisp horizon atmospheric haze
+            float horizonBand = exp(-abs(h - 0.46) * 14.0) * 0.22;
+            sky += sunGlowColor * horizonBand;
             gl_FragColor = vec4(sky, 1.0);
           }
         `,
       }),
     );
-    this.skyMesh.position.set(0, 10, -145);
+    this.skyMesh.position.set(0, 10, -180);
     this.scene.add(this.skyMesh);
 
     // Sun / Moon Disc + Halo
@@ -502,16 +575,16 @@ export class WorldSceneController {
     midRidge.position.z = -48;
     this.scene.add(midRidge);
 
-    // PBR Terrain Road & Cliff Strata with procedural micro-relief bump map
-    this.terrainBumpTex = createSurfaceBumpTexture(this.maxAniso, 1.15);
+    // PBR Terrain Road & Cliff Strata with crisp procedural rock fracture bump map
+    this.terrainBumpTex = createSurfaceBumpTexture(this.maxAniso, 1.32);
     this.woodTex = createWoodPlankTexture(this.maxAniso);
 
     this.roadGeo = this.createRibbonGeometry(TERRAIN_SEGMENTS);
     this.roadMat = new THREE.MeshStandardMaterial({
-      roughness: 0.86,
+      roughness: 0.88,
       metalness: 0.04,
       bumpMap: this.terrainBumpTex,
-      bumpScale: 0.12,
+      bumpScale: 0.24,
       vertexColors: true,
     });
     this.roadMesh = new THREE.Mesh(this.roadGeo, this.roadMat);
@@ -522,15 +595,19 @@ export class WorldSceneController {
     this.cliffGeo = this.createRibbonGeometry(TERRAIN_SEGMENTS);
     this.cliffMat = new THREE.MeshStandardMaterial({
       roughness: 0.94,
-      metalness: 0.02,
+      metalness: 0.03,
       bumpMap: this.terrainBumpTex,
-      bumpScale: 0.22,
+      bumpScale: 0.36,
       vertexColors: true,
     });
     this.cliffMesh = new THREE.Mesh(this.cliffGeo, this.cliffMat);
     this.cliffMesh.receiveShadow = true;
     this.cliffMesh.frustumCulled = false;
     this.scene.add(this.cliffMesh);
+
+    // Sculpted Title Crawl Rock Shelf Prop Group
+    this.titleRockGroup = new THREE.Group();
+    this.scene.add(this.titleRockGroup);
 
     // Gorge River Water Plane far below bridges
     this.gorgeWaterMesh = new THREE.Mesh(
@@ -855,14 +932,32 @@ export class WorldSceneController {
     this.skyUniforms.bottomColor.value.set(stage.skyHorizon);
     this.skyUniforms.sunGlowColor.value.set(
       stage.id === 'frost_peaks'
-        ? '#38bdf8'
+        ? '#60a5fa'
         : stage.id === 'vice_coast'
-          ? '#ff6b9d'
+          ? '#ff7d6b'
           : stage.id === 'moon'
             ? '#475569'
-            : '#ffe6ad',
+            : '#ffdc9e',
     );
-    this.scene.fog = new THREE.FogExp2(stage.fogColor, stage.fogDensity);
+    this.skyUniforms.cloudDark.value.set(
+      stage.id === 'frost_peaks'
+        ? '#14243e'
+        : stage.id === 'vice_coast'
+          ? '#3b1c4a'
+          : stage.id === 'red_canyon'
+            ? '#332b29'
+            : '#3d4754',
+    );
+    this.skyUniforms.cloudLit.value.set(
+      stage.id === 'frost_peaks'
+        ? '#7dd3fc'
+        : stage.id === 'vice_coast'
+          ? '#fda4af'
+          : '#f8e0b8',
+    );
+    this.skyUniforms.overcastMix.value =
+      stage.id === 'moon' ? 0.0 : stage.id === 'frost_peaks' ? 0.42 : 0.78;
+    this.scene.fog = new THREE.FogExp2(stage.fogColor, stage.fogDensity * 0.85);
 
     this.sunLight.color.set(stage.sunColor);
     this.sunLight.intensity = stage.sunIntensity;
@@ -881,14 +976,15 @@ export class WorldSceneController {
             : '#fff3c4',
     );
     sunMat.opacity =
-      stage.id === 'frost_peaks' ? 0.58 : stage.id === 'vice_coast' ? 0.95 : 0.92;
+      stage.id === 'frost_peaks' ? 0.52 : stage.id === 'vice_coast' ? 0.92 : 0.86;
     this.earthDisc.visible = stage.id === 'moon';
 
     this.starPoints.visible = stage.hasStars;
     this.auroraGroup.visible = stage.hasAurora;
-    this.cloudGroup.visible = !stage.hasStars || stage.id === 'vice_coast';
+    // Procedural FBM shader renders realistic cloud strata & contrails directly on skyMesh
+    this.cloudGroup.visible = false;
     this.balloonGroup.visible =
-      stage.id === 'countryside' || stage.id === 'red_canyon' || stage.id === 'vice_coast';
+      stage.id === 'countryside' || stage.id === 'vice_coast';
     this.ambientSnowMesh.visible = stage.hasSnowfall || stage.hasDustHaze;
     (this.ambientSnowMesh.material as THREE.PointsMaterial).color.set(
       stage.hasSnowfall ? '#ffffff' : '#e6a875',
@@ -923,6 +1019,8 @@ export class WorldSceneController {
     this.roadMat.needsUpdate = true;
     this.cliffMat.map = this.strataTex;
     this.cliffMat.needsUpdate = true;
+
+    this.populateTitleRocks();
 
     this.propSlots.fill(-99999);
     this.fgSlots.fill(-99999);
@@ -993,7 +1091,8 @@ export class WorldSceneController {
     if (this.ghostRig && mode !== 'PLAYING') {
       this.ghostRig.root.visible = false;
     }
-    this.updateOrthoFrustum();
+    this.titleRockGroup.visible = mode === 'TITLE';
+    this.updatePerspectiveProjection();
   }
 
   public setInput(input: Partial<InputState>): void {
@@ -1172,7 +1271,8 @@ export class WorldSceneController {
     this.camX = s0.x + 3.2;
     this.camY = s0.y + 1.2;
     this.mode = 'PLAYING';
-    this.updateOrthoFrustum();
+    this.titleRockGroup.visible = false;
+    this.updatePerspectiveProjection();
     return this.physics;
   }
 
@@ -1218,29 +1318,14 @@ export class WorldSceneController {
     }
   }
 
-  private updateOrthoFrustum(): void {
+  private updatePerspectiveProjection(): void {
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
     const aspect = w / h;
-    const zoom = this.mode === 'TITLE' ? 1.15 : this.camZoom;
-    const scale = this.mode === 'TITLE' ? 1.0 : this.dynamicOrthoScale;
-    const minHalfW = ((this.mode === 'TITLE' ? 8.8 : 11.4) * scale) / zoom;
-    const baseHalfH = ((this.mode === 'TITLE' ? 5.6 : 7.4) * scale) / zoom;
-
-    let halfW: number;
-    let halfH: number;
-    if (aspect < minHalfW / baseHalfH) {
-      halfW = minHalfW;
-      halfH = minHalfW / aspect;
-    } else {
-      halfH = baseHalfH;
-      halfW = baseHalfH * aspect;
-    }
-
-    this.camera.left = -halfW;
-    this.camera.right = halfW;
-    this.camera.top = halfH;
-    this.camera.bottom = -halfH;
+    const baseFov = this.mode === 'TITLE' ? 36 : 38;
+    const aspectBoost = aspect < 1.05 ? (1.05 - aspect) * 18 : 0;
+    this.camera.fov = THREE.MathUtils.clamp(baseFov + aspectBoost, 34, 52);
+    this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
   }
 
@@ -1248,7 +1333,7 @@ export class WorldSceneController {
     if (this.disposed) return;
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
-    this.updateOrthoFrustum();
+    this.updatePerspectiveProjection();
     this.renderer.setSize(w, h);
   }
 
@@ -1336,51 +1421,77 @@ export class WorldSceneController {
     if (this.mode === 'TITLE') {
       this.dirtLevel = 0;
       rig.dirtMat.opacity = 0;
+      this.titleRockGroup.visible = true;
+
+      const v = this.activeVehicle;
       const heroX = START_X + 62;
+      const groundL = sampleDriveHeight(heroX - 1.2, this.activeStage);
+      const groundR = sampleDriveHeight(heroX + 1.2, this.activeStage);
       const groundAtHero = sampleDriveHeight(heroX, this.activeStage);
-      const heroY = groundAtHero + 2.45 + Math.sin(this.elapsed * 1.4) * 0.18;
-      rig.root.position.set(heroX, heroY, 0);
-      rig.chassisGroup.position.set(0, 0, 0);
-      rig.chassisGroup.rotation.z = 0.22 + Math.sin(this.elapsed * 1.1) * 0.03;
+      const slopeAngle = Math.atan2(groundR - groundL, 2.4);
+      const climbAngle = THREE.MathUtils.clamp(slopeAngle + 0.14, 0.1, 0.34);
 
-      const wb = this.activeVehicle.wheelbase;
-      const susp = this.activeVehicle.suspensionRest * 0.65;
-      const cs = Math.cos(rig.chassisGroup.rotation.z);
-      const sn = Math.sin(rig.chassisGroup.rotation.z);
+      const susp = v.suspensionRest * 0.62;
+      const idleBreath = Math.sin(this.elapsed * 0.9) * 0.012;
+      const cs = Math.cos(climbAngle);
+      const sn = Math.sin(climbAngle);
 
+      // Anchor tires solidly onto the sloped crawl ridge with subtle suspension breathing
+      rig.root.position.set(heroX, groundAtHero + v.wheelRadius + susp * cs + 0.04, 0);
+      rig.chassisGroup.position.set(0, idleBreath, 0);
+      rig.chassisGroup.rotation.z = climbAngle;
+
+      const wb = v.wheelbase;
       rig.wheelRearGroup.position.set(-wb * 0.5 * cs + susp * sn, -wb * 0.5 * sn - susp * cs, 0);
       rig.wheelFrontGroup.position.set(wb * 0.5 * cs + susp * sn, wb * 0.5 * sn - susp * cs, 0);
-      rig.wheelRearSpin.rotation.z -= dt * 8;
-      rig.wheelFrontSpin.rotation.z -= dt * 8;
       rig.nitroGlow.visible = false;
-      rig.backfireGlow.visible = Math.sin(this.elapsed * 9) > 0.94;
-      rig.brakeLightMat.emissiveIntensity = 0.7;
-      rig.driverTorso.rotation.z = -0.1;
-      rig.driverHead.rotation.z = -0.05;
+      rig.backfireGlow.visible = false;
+      rig.brakeLightMat.emissiveIntensity = 0.85;
+      rig.driverTorso.rotation.z = -0.06;
+      rig.driverHead.rotation.z = -0.04;
+      if (rig.headlightSpot) {
+        rig.headlightSpot.intensity = 28;
+      }
+      rig.headlightCones.forEach((c) => {
+        c.visible = true;
+      });
       if (rig.whipFlag) {
-        rig.whipFlag.rotation.y = Math.sin(this.elapsed * 12) * 0.28;
+        rig.whipFlag.rotation.y = Math.sin(this.elapsed * 3.2) * 0.16;
       }
       if (rig.neonPoolMesh) {
         rig.neonPoolMesh.visible = false;
       }
-
       if (this.ghostRig) {
         this.ghostRig.root.visible = false;
       }
 
-      this.updateShocksAndArms(rig, susp, susp);
+      this.updateShocksAndArms(rig, susp - idleBreath, susp - idleBreath);
 
-      const targetCamX = heroX + 0.4 + Math.sin(this.elapsed * 0.35) * 0.65;
-      const targetCamY = heroY + 0.35;
-      this.camX = THREE.MathUtils.damp(this.camX, targetCamX, 4, dt);
-      this.camY = THREE.MathUtils.damp(this.camY, targetCamY, 4, dt);
+      const w = Math.max(1, this.container.clientWidth);
+      const h = Math.max(1, this.container.clientHeight);
+      const aspect = w / h;
+      const distScale = aspect < 1 ? 1.34 : 1.0;
 
-      this.camera.position.set(this.camX, this.camY, 45);
-      this.camera.lookAt(this.camX, this.camY, 0);
-      this.contactShadowMesh.visible = false;
+      const targetCamX = heroX + 6.9 * distScale + Math.sin(this.elapsed * 0.25) * 0.14;
+      const targetCamY = groundAtHero + 0.72 + Math.cos(this.elapsed * 0.22) * 0.05;
+      const targetCamZ = 5.9 * distScale;
+
+      this.camX = THREE.MathUtils.damp(this.camX, targetCamX, 5, dt);
+      this.camY = THREE.MathUtils.damp(this.camY, targetCamY, 5, dt);
+      this.camera.position.set(this.camX, this.camY, targetCamZ);
+      this.heroLookTarget.set(heroX + 2.15, groundAtHero + 0.96, 0);
+      this.camera.lookAt(this.heroLookTarget);
+
+      this.contactShadowMesh.visible = true;
+      this.contactShadowMesh.position.set(heroX, groundAtHero + 0.06, 0);
+      (this.contactShadowMesh.material as THREE.MeshBasicMaterial).opacity = 0.64;
+
+      this.sunLight.position.set(heroX - 24, groundAtHero + 18, 12);
+      this.sunLight.target.position.set(heroX + 1.5, groundAtHero + 0.6, 0);
       return;
     }
 
+    this.titleRockGroup.visible = false;
     if (!this.physics) return;
     const s = this.physics.state;
     const v = this.activeVehicle;
@@ -1473,7 +1584,7 @@ export class WorldSceneController {
       }
     }
 
-    // Crisp 2D/2.5D Orthographic Side-View Chase Camera with smooth speed/air zoom-out
+    // Crisp 2.5D Perspective Chase Camera with smooth speed & big-air zoom-out
     const speed = forwardSpeed;
     const groundY = sampleDriveHeight(s.x, this.activeStage);
     const heightAboveGround = Math.max(0, s.y - groundY - v.suspensionRest - v.wheelRadius);
@@ -1489,21 +1600,23 @@ export class WorldSceneController {
       (s.nitroActive ? 0.08 : 0) +
       Math.min(0.28, speed * 0.0075) +
       Math.min(0.24, heightAboveGround * 0.045);
-    if (Math.abs(this.dynamicOrthoScale - targetOrthoScale) > 0.003) {
-      this.dynamicOrthoScale = THREE.MathUtils.damp(
-        this.dynamicOrthoScale,
-        targetOrthoScale,
-        4.5,
-        dt,
-      );
-      this.updateOrthoFrustum();
-    }
+    this.dynamicOrthoScale = THREE.MathUtils.damp(
+      this.dynamicOrthoScale,
+      targetOrthoScale,
+      4.5,
+      dt,
+    );
+
+    const w = Math.max(1, this.container.clientWidth);
+    const h = Math.max(1, this.container.clientHeight);
+    const aspect = w / h;
+    const camZ = ((aspect < 1 ? 30.5 : 25.5) * this.dynamicOrthoScale) / this.camZoom;
 
     const shakeX = (Math.random() - 0.5) * s.shakeIntensity * 0.75 * this.shakeScale;
     const shakeY = (Math.random() - 0.5) * s.shakeIntensity * 0.75 * this.shakeScale;
 
-    this.camera.position.set(this.camX + shakeX, this.camY + shakeY, 45);
-    this.camera.lookAt(this.camX + shakeX, this.camY + shakeY, 0);
+    this.camera.position.set(this.camX + shakeX, this.camY + 1.65 + shakeY, camZ);
+    this.camera.lookAt(this.camX + 1.4 + shakeX, this.camY - 0.15 + shakeY, 0);
 
     // Keep contact shadow anchored to terrain directly below vehicle chassis
     this.contactShadowMesh.visible = true;
@@ -1552,25 +1665,26 @@ export class WorldSceneController {
 
       const v0 = i * 2;
       const v1 = v0 + 1;
-      roadPos.setXYZ(v0, x, gy, -7.2);
-      roadPos.setXYZ(v1, x, gy, 4.2);
+      roadPos.setXYZ(v0, x, gy, -12.5);
+      roadPos.setXYZ(v1, x, gy, 4.8);
       roadUv.setXY(v0, x * 0.14, 0);
       roadUv.setXY(v1, x * 0.14, 1);
 
+      const strataVar = 0.92 + Math.sin(x * 0.7) * 0.06;
       if (surf.surface === 'ice') {
         roadCol.setXYZ(v0, 0.52, 0.86, 1.0);
         roadCol.setXYZ(v1, 0.58, 0.9, 1.0);
       } else {
-        roadCol.setXYZ(v0, 1, 1, 1);
-        roadCol.setXYZ(v1, 0.95, 0.95, 0.95);
+        roadCol.setXYZ(v0, strataVar, strataVar, strataVar);
+        roadCol.setXYZ(v1, 0.95 * strataVar, 0.94 * strataVar, 0.93 * strataVar);
       }
 
-      cliffPos.setXYZ(v0, x, gy, 4.2);
-      cliffPos.setXYZ(v1, x, gy - 44, 4.2);
+      cliffPos.setXYZ(v0, x, gy, 4.8);
+      cliffPos.setXYZ(v1, x, gy - 44, 4.8);
       cliffUv.setXY(v0, x * 0.09, 0);
       cliffUv.setXY(v1, x * 0.09, 1);
-      cliffCol.setXYZ(v0, 1, 1, 1);
-      cliffCol.setXYZ(v1, 0.58, 0.58, 0.58);
+      cliffCol.setXYZ(v0, strataVar, strataVar, strataVar);
+      cliffCol.setXYZ(v1, 0.54, 0.54, 0.54);
     }
 
     roadPos.needsUpdate = true;
@@ -1591,7 +1705,7 @@ export class WorldSceneController {
 
     const updateRidge = (geo: THREE.BufferGeometry, parallax: number, baseY: number, scaleY: number, freq: number) => {
       const pos = geo.attributes.position as THREE.BufferAttribute;
-      const step = 4.2;
+      const step = 7.4;
       const ridgeStart = this.camX - (RIDGE_SEGMENTS * step) * 0.5;
       for (let i = 0; i <= RIDGE_SEGMENTS; i++) {
         const x = ridgeStart + i * step;
@@ -1611,16 +1725,136 @@ export class WorldSceneController {
     updateRidge(this.midRidgeGeo, 0.35, 1.2, 3.2 * this.activeStage.ampMult, 0.085);
   }
 
+  private createCraggyRockMesh(
+    radius: number,
+    colorHex: string,
+    seed = 1,
+    flatScale = 0.68,
+  ): THREE.Mesh {
+    const geo = new THREE.IcosahedronGeometry(radius, 1);
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i);
+      const vy = pos.getY(i);
+      const vz = pos.getZ(i);
+      const strata = 0.8 + 0.34 * hash01(Math.round((vx * 13 + vy * 29 + vz * 19 + seed * 7) * 10));
+      const shelfCut = vy < 0 ? 0.65 : 1.0;
+      pos.setXYZ(i, vx * strata, vy * strata * flatScale * shelfCut, vz * strata);
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({
+      color: colorHex,
+      roughness: 0.9,
+      metalness: 0.05,
+      flatShading: true,
+      bumpMap: this.terrainBumpTex,
+      bumpScale: 0.32,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  private createScrubGrassTuft(colorHex: string, seed = 1): THREE.Group {
+    const tuft = new THREE.Group();
+    const bladeMat = new THREE.MeshStandardMaterial({
+      color: colorHex,
+      roughness: 0.92,
+      side: THREE.DoubleSide,
+    });
+    for (let b = 0; b < 9; b++) {
+      const blade = new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.45 + hash01(seed + b) * 0.35, 3), bladeMat);
+      const ang = (b / 9) * Math.PI * 2 + hash01(seed * 3 + b) * 0.4;
+      const tilt = 0.25 + hash01(seed * 5 + b) * 0.42;
+      blade.position.set(Math.cos(ang) * 0.08, 0.2, Math.sin(ang) * 0.08);
+      blade.rotation.z = -Math.cos(ang) * tilt;
+      blade.rotation.x = Math.sin(ang) * tilt;
+      tuft.add(blade);
+    }
+    return tuft;
+  }
+
+  private populateTitleRocks(): void {
+    this.clearGroupChildren(this.titleRockGroup);
+    const heroX = START_X + 62;
+    const baseColor =
+      this.activeStage.id === 'red_canyon'
+        ? '#8c3b23'
+        : this.activeStage.id === 'frost_peaks'
+          ? '#64748b'
+          : this.activeStage.id === 'moon'
+            ? '#64687a'
+            : this.activeStage.id === 'vice_coast'
+              ? '#5b534b'
+              : '#7b4328';
+    const highlightColor =
+      this.activeStage.id === 'red_canyon'
+        ? '#ad4e2f'
+        : this.activeStage.id === 'frost_peaks'
+          ? '#94a3b8'
+          : this.activeStage.id === 'moon'
+            ? '#7c8296'
+            : this.activeStage.id === 'vice_coast'
+              ? '#78716c'
+              : '#9a5433';
+    const scrubColor =
+      this.activeStage.id === 'frost_peaks'
+        ? '#94a3b8'
+        : this.activeStage.id === 'vice_coast'
+          ? '#3f7d44'
+          : '#7d8042';
+
+    const placements = [
+      // Foreground crawl boulder directly next to rear/mid rock shelf (clear of right title area)
+      { dx: -1.1, dz: 1.55, r: 0.72, sy: 0.56, col: baseColor, seed: 11 },
+      { dx: 1.9, dz: 1.85, r: 0.58, sy: 0.52, col: highlightColor, seed: 19 },
+      // Mid-right rugged sandstone shelves framing the climb path
+      { dx: 4.8, dz: -2.4, r: 2.3, sy: 0.54, col: highlightColor, seed: 23 },
+      { dx: 7.4, dz: -4.2, r: 2.7, sy: 0.62, col: baseColor, seed: 31 },
+      { dx: -4.2, dz: -3.2, r: 1.9, sy: 0.58, col: baseColor, seed: 37 },
+      { dx: 2.2, dz: -2.6, r: 1.45, sy: 0.52, col: highlightColor, seed: 43 },
+    ];
+    placements.forEach((p) => {
+      const rx = heroX + p.dx;
+      const ry = sampleBaseGroundHeight(rx, this.activeStage);
+      const rock = this.createCraggyRockMesh(p.r, p.col, p.seed, p.sy);
+      rock.position.set(rx, ry + p.r * p.sy * 0.28, p.dz);
+      rock.rotation.y = hash01(p.seed) * Math.PI * 2;
+      this.titleRockGroup.add(rock);
+    });
+
+    if (this.activeStage.id !== 'moon') {
+      [
+        { dx: 2.6, dz: -1.35, s: 1 },
+        { dx: 3.1, dz: -1.7, s: 4 },
+        { dx: -2.4, dz: -1.4, s: 9 },
+      ].forEach((g) => {
+        const gx = heroX + g.dx;
+        const gy = sampleBaseGroundHeight(gx, this.activeStage);
+        const tuft = this.createScrubGrassTuft(scrubColor, g.s);
+        tuft.position.set(gx, gy - 0.04, g.dz);
+        this.titleRockGroup.add(tuft);
+      });
+    }
+  }
+
   private clearGroupChildren(grp: THREE.Group): void {
     while (grp.children.length > 0) {
-      const c = grp.children[0] as THREE.Mesh;
-      grp.remove(c);
-      c.geometry?.dispose();
-      if (Array.isArray(c.material)) {
-        c.material.forEach((mat) => mat.dispose());
-      } else {
-        c.material?.dispose();
-      }
+      const child = grp.children[0];
+      grp.remove(child);
+      child.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+        if (mesh.material) {
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach((mat) => mat.dispose());
+          } else {
+            mesh.material.dispose();
+          }
+        }
+      });
     }
   }
 
@@ -1783,8 +2017,7 @@ export class WorldSceneController {
     this.clearGroupChildren(grp);
     const id = this.activeStage.id;
     if (id === 'countryside') {
-      // Split-rail wooden fence post or foreground rock
-      if (hash01(slot + 7) < 0.6) {
+      if (hash01(slot + 7) < 0.55) {
         const wMat = new THREE.MeshStandardMaterial({ color: '#6b4423', roughness: 0.92 });
         const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.1, 0.16), wMat);
         post.position.y = 0.45;
@@ -1792,22 +2025,18 @@ export class WorldSceneController {
         rail.position.set(1.2, 0.75, 0);
         grp.add(post, rail);
       } else {
-        const bush = new THREE.Mesh(
-          new THREE.DodecahedronGeometry(0.55, 1),
-          new THREE.MeshStandardMaterial({ color: '#398a38', roughness: 0.9 }),
-        );
-        bush.scale.set(1.3, 0.75, 0.9);
-        bush.position.y = 0.28;
-        grp.add(bush);
+        const rock = this.createCraggyRockMesh(0.62, '#645c50', slot + 3, 0.6);
+        rock.position.y = 0.24;
+        const tuft = this.createScrubGrassTuft('#6a7c3a', slot);
+        tuft.position.set(0.45, 0.08, 0.12);
+        grp.add(rock, tuft);
       }
     } else if (id === 'red_canyon') {
-      const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(0.6, 0),
-        new THREE.MeshStandardMaterial({ color: '#8f3620', roughness: 0.92 }),
-      );
-      rock.scale.set(1.4, 0.7, 0.9);
-      rock.position.y = 0.25;
-      grp.add(rock);
+      const rock = this.createCraggyRockMesh(0.68, '#8f3620', slot + 5, 0.62);
+      rock.position.y = 0.24;
+      const tuft = this.createScrubGrassTuft('#8e7e46', slot);
+      tuft.position.set(-0.4, 0.08, 0.15);
+      grp.add(rock, tuft);
     } else if (id === 'frost_peaks') {
       const crystal = new THREE.Mesh(
         new THREE.ConeGeometry(0.32, 1.15, 5),
@@ -1837,19 +2066,14 @@ export class WorldSceneController {
         reflector.position.y = 0.58;
         grp.add(barrier, reflector);
       } else {
-        const palmetto = new THREE.Mesh(
-          new THREE.DodecahedronGeometry(0.55, 0),
-          new THREE.MeshStandardMaterial({ color: '#15803d', roughness: 0.88 }),
-        );
-        palmetto.scale.set(1.3, 0.65, 1.0);
-        palmetto.position.y = 0.24;
-        grp.add(palmetto);
+        const rock = this.createCraggyRockMesh(0.58, '#78716c', slot + 11, 0.58);
+        rock.position.y = 0.22;
+        const tuft = this.createScrubGrassTuft('#228044', slot);
+        tuft.position.set(0.38, 0.06, 0.1);
+        grp.add(rock, tuft);
       }
     } else {
-      const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(0.5, 0),
-        new THREE.MeshStandardMaterial({ color: '#6b7280', roughness: 0.94 }),
-      );
+      const rock = this.createCraggyRockMesh(0.56, '#6b7280', slot + 13, 0.64);
       rock.position.y = 0.2;
       grp.add(rock);
     }
@@ -1898,15 +2122,15 @@ export class WorldSceneController {
         return;
       }
 
-      // Rocky boulder cluster alongside trail
-      if (hash01(slot * 41 + 9) < 0.2) {
-        const rMat = new THREE.MeshStandardMaterial({ color: '#64748b', roughness: 0.94 });
-        const b1 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.95, 0), rMat);
-        b1.scale.set(1.3, 0.75, 1.0);
-        b1.position.y = 0.4;
-        const b2 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.65, 0), rMat);
-        b2.position.set(0.85, 0.28, 0.35);
-        grp.add(b1, b2);
+      // Craggy faceted rock outcrop cluster alongside trail
+      if (hash01(slot * 41 + 9) < 0.25) {
+        const b1 = this.createCraggyRockMesh(1.15, '#645c53', slot + 2, 0.65);
+        b1.position.y = 0.42;
+        const b2 = this.createCraggyRockMesh(0.75, '#786e62', slot + 9, 0.58);
+        b2.position.set(0.95, 0.28, 0.35);
+        const tuft = this.createScrubGrassTuft('#6f7e3d', slot);
+        tuft.position.set(-0.65, 0.05, 0.45);
+        grp.add(b1, b2, tuft);
         return;
       }
 
@@ -2085,13 +2309,8 @@ export class WorldSceneController {
         dish.rotation.z = -0.6;
         grp.add(pod, dish);
       } else {
-        const rock = new THREE.Mesh(
-          new THREE.DodecahedronGeometry(1.0, 0),
-          new THREE.MeshStandardMaterial({ color: '#787d96', roughness: 0.92 }),
-        );
-        rock.scale.set(1.25, 0.75, 1.1);
+        const rock = this.createCraggyRockMesh(1.12, '#787d96', slot + 17, 0.68);
         rock.position.y = 0.45;
-        rock.castShadow = true;
         grp.add(rock);
       }
     }
@@ -2188,10 +2407,44 @@ export class WorldSceneController {
   }
 
   private updateAtmosphere(dt: number): void {
-    this.skyMesh.position.set(this.camX, this.camY, -145);
-    this.sunDisc.position.set(this.camX + 9.5, this.camY + 5.2, -125);
-    this.earthDisc.position.set(this.camX - 7.5, this.camY + 4.8, -120);
-    this.starPoints.position.set(this.camX, this.camY, 0);
+    this.skyUniforms.time.value = this.elapsed;
+    this.skyUniforms.sunDir.value.set(
+      this.mode === 'TITLE' ? 0.16 : 0.76,
+      this.mode === 'TITLE' ? 0.56 : 0.72,
+    );
+
+    // Orient sky plane perpendicular to active camera view ray so 3/4 angles never clip sky edges
+    this.camera.getWorldDirection(_vec3);
+    _vec3.y = 0;
+    if (_vec3.lengthSq() < 0.0001) _vec3.set(0, 0, -1);
+    _vec3.normalize();
+    const rightX = -_vec3.z;
+    const rightZ = _vec3.x;
+    const camPos = this.camera.position;
+
+    this.skyMesh.position.set(
+      camPos.x + _vec3.x * 195,
+      this.camY + 14,
+      camPos.z + _vec3.z * 195,
+    );
+    this.skyMesh.lookAt(camPos.x, this.skyMesh.position.y, camPos.z);
+
+    const sunSide = this.mode === 'TITLE' ? -44 : 34;
+    this.sunDisc.position.set(
+      camPos.x + _vec3.x * 160 + rightX * sunSide,
+      this.camY + (this.mode === 'TITLE' ? 12 : 24),
+      camPos.z + _vec3.z * 160 + rightZ * sunSide,
+    );
+    this.sunDisc.lookAt(camPos.x, camPos.y, camPos.z);
+
+    this.earthDisc.position.set(
+      camPos.x + _vec3.x * 140 - rightX * 18,
+      this.camY + 14,
+      camPos.z + _vec3.z * 140 - rightZ * 18,
+    );
+    this.earthDisc.lookAt(camPos.x, camPos.y, camPos.z);
+
+    this.starPoints.position.set(camPos.x + _vec3.x * 40, this.camY, camPos.z + _vec3.z * 40);
     this.cloudGroup.position.set(this.camX * 0.85, this.camY * 0.82, 0);
     if (this.balloonGroup.visible) {
       this.balloonGroup.position.set(this.camX * 0.72, this.camY * 0.78, 0);
@@ -2230,6 +2483,9 @@ export class WorldSceneController {
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
     this.resizeObserver.disconnect();
+    this.clearGroupChildren(this.titleRockGroup);
+    this.propPool.forEach((g) => this.clearGroupChildren(g));
+    this.fgPool.forEach((g) => this.clearGroupChildren(g));
     this.vehicleRig?.dispose();
     this.ghostRig?.dispose();
     this.roadTex?.dispose();
