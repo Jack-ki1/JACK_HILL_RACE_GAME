@@ -20,6 +20,7 @@ import { HillClimbPhysics, ParticleBurst } from './physics';
 import {
   getBridgeInfo,
   getCollectibleForSlot,
+  getSummitX,
   getSurfaceAt,
   getTunnelInfo,
   hash01,
@@ -35,18 +36,36 @@ import {
   createTerrainStrataTexture,
   createWoodPlankTexture,
 } from './textures';
+import { captureHumanClimbSample, computeHybridNnControl, extractNnFeatures } from './aiAgent';
+import { forwardPass } from '../shared/nnCore';
 import {
+  CameraMode,
   CameraShakeMode,
+  ClimbSetupConfig,
+  ClimbTireId,
   GhostSample,
   GraphicsQuality,
   InputState,
+  LandingGrade,
   LiveryId,
   NeonColorId,
+  NnEvolutionBonuses,
+  NnLiveTelemetry,
+  NnTrainingSample,
+  NnWeightsBlob,
+  RivalMode,
   SaveData,
   StageConfig,
+  StageId,
+  SurfaceType,
+  TimeOfDay,
+  TuningPartId,
+  UpgradeLevels,
   VehicleAccessoryId,
   VehicleConfig,
+  WeatherCondition,
 } from '../types/game';
+import { DEFAULT_CLIMB_SETUP } from './constants';
 
 export type WorldMode = 'TITLE' | 'PLAYING' | 'PAUSED' | 'GAME_OVER';
 
@@ -68,6 +87,7 @@ const TERRAIN_SEGMENTS = 160;
 const TERRAIN_STEP_X = 0.85;
 const RIDGE_SEGMENTS = 96;
 const MAX_PARTICLES = 360;
+const MAX_SKIDMARKS = 84;
 const COIN_POOL_SIZE = 32;
 const FUEL_POOL_SIZE = 6;
 const PROP_POOL_SIZE = 38;
@@ -170,6 +190,9 @@ export class WorldSceneController {
   private cliffGeo: THREE.BufferGeometry;
   private cliffMat: THREE.MeshStandardMaterial;
   private cliffMesh: THREE.Mesh;
+  private lipGeo: THREE.BufferGeometry;
+  private lipMat: THREE.MeshStandardMaterial;
+  private lipMesh: THREE.Mesh;
   private gorgeWaterMesh: THREE.Mesh;
   private roadTex: THREE.CanvasTexture | null = null;
   private strataTex: THREE.CanvasTexture | null = null;
@@ -180,8 +203,10 @@ export class WorldSceneController {
   private farRidgeMat: THREE.MeshBasicMaterial;
   private midRidgeGeo: THREE.BufferGeometry;
   private midRidgeMat: THREE.MeshBasicMaterial;
+  private viceHorizonGroup: THREE.Group;
+  private countrysideBackdropGroup: THREE.Group;
 
-  // Bridges, Cave Tunnels, Scenery Props, Foreground Markers, Signposts, Collectibles, Particles
+  // Bridges, Cave Tunnels, Scenery Props, Foreground Markers, Signposts, Collectibles, Particles, Skidmarks
   private bridgePool: { group: THREE.Group; activeStartX: number }[] = [];
   private tunnelPool: THREE.Group[] = [];
   private propPool: THREE.Group[] = [];
@@ -191,21 +216,50 @@ export class WorldSceneController {
   private signPool: THREE.Group[] = [];
   private signSlots: number[] = [];
   private signTexCache = new Map<string, THREE.CanvasTexture>();
+  private finishBannerGroup: THREE.Group;
+  private startGateGroup: THREE.Group;
+  private summitGateGroup: THREE.Group;
+  private stageBestMeters = 0;
   private coinPool: Map<number, THREE.Group[]> = new Map();
   private fuelPool: THREE.Group[] = [];
   private particleMesh: THREE.InstancedMesh;
   private particles: ActiveParticle[] = [];
+  private skidMesh: THREE.InstancedMesh;
+  private skidCursor = 0;
+  private lastSkidX = -99999;
   private ambientSnowMesh: THREE.Points;
   private ambientSnowPos: Float32Array;
+  private rainMesh: THREE.Points;
+  private rainPos: Float32Array;
 
-  // Vehicle, Ghost Rival & Physics
+  // Vehicle, Ghost Rival, Live AI Rival & Physics
   private vehicleRig: VehicleRig3D | null = null;
   private ghostRig: GhostRig3D | null = null;
+  private aiRig: GhostRig3D | null = null;
   private activeGhostTrack: GhostSample[] = [];
   private recordedGhost: GhostSample[] = [];
   private runElapsedSec = 0;
   private ghostSampleAccum = 0;
+  private humanSampleAccum = 0;
   private showGhost = true;
+  private rivalMode: RivalMode = 'ai';
+  private aiAutoPilot = false;
+  private watchAiMode = false;
+  private cameraMode: CameraMode = 'chase';
+  private activeClimbSetup: ClimbSetupConfig = { ...DEFAULT_CLIMB_SETUP };
+  private nnWeights: NnWeightsBlob | null = null;
+  private nnHillMastery: Record<StageId, number> = {
+    countryside: 18,
+    red_canyon: 12,
+    frost_peaks: 10,
+    moon: 8,
+    vice_coast: 20,
+  };
+  private nnEvolutionBonuses: NnEvolutionBonuses | null = null;
+  private aiAutoTune = true;
+  private latestNnTelemetry: NnLiveTelemetry | null = null;
+  private onHumanSampleCallback: ((sample: NnTrainingSample) => void) | null = null;
+  private activeEquippedParts: TuningPartId[] = [];
   private activeStage: StageConfig = STAGES[0];
   private activeVehicle: VehicleConfig = VEHICLES[0];
   private activePaintId = 'frontier_red';
@@ -213,22 +267,25 @@ export class WorldSceneController {
   private activeAccessories: VehicleAccessoryId[] = ['lightbar'];
   private activeNeonId: NeonColorId = 'off';
   private activeLiveryId: LiveryId = 'clean';
+  private activeUpgrades: UpgradeLevels | undefined = undefined;
+  private activeRideHeight = 0;
   private backfireTimer = 0;
   private dirtLevel = 0;
   private lastDirtX = START_X;
   private physics: HillClimbPhysics | null = null;
-  private input: InputState = { gas: false, brake: false, nitro: false, handbrake: false };
+  private aiPhysics: HillClimbPhysics | null = null;
+  private input: InputState = { gas: false, brake: false, nitro: false, handbrake: false, jump: false, lowRange: false };
   private mode: WorldMode = 'TITLE';
 
-  // Perspective Camera framing (3/4 Hero Crawl on TITLE, crisp 2.5D follow on PLAYING)
+  // Perspective Camera framing (Showroom Turntable on TITLE, crisp 2.5D follow on PLAYING)
   private camX = START_X + 62;
   private camY = 3;
   private camZoom = 1.0;
   private dynamicOrthoScale = 1.0;
   private shakeScale = 1.0;
-  private contactShadowMesh: THREE.Mesh;
-  private heroLookTarget = new THREE.Vector3(START_X + 64, 2, 0);
+  private heroLookTarget = new THREE.Vector3(START_X + 62, 2, 0);
   private titleRockGroup: THREE.Group;
+  private turntableDisc: THREE.Group | null = null;
 
   // External hooks
   private onTickCallback: ((dt: number, physics: HillClimbPhysics | null) => void) | null = null;
@@ -417,21 +474,6 @@ export class WorldSceneController {
     // Sun / Moon Disc + Halo
     this.glowTex = createSoftGlowTexture();
 
-    // Soft Ground Contact Shadow beneath player chassis
-    this.contactShadowMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(4.5, 2.2),
-      new THREE.MeshBasicMaterial({
-        map: this.glowTex,
-        color: '#020617',
-        transparent: true,
-        opacity: 0.55,
-        depthWrite: false,
-      }),
-    );
-    this.contactShadowMesh.rotation.x = -Math.PI / 2;
-    this.contactShadowMesh.position.set(START_X, 0.05, 0);
-    this.scene.add(this.contactShadowMesh);
-
     this.sunDisc = new THREE.Mesh(
       new THREE.PlaneGeometry(14, 14),
       new THREE.MeshBasicMaterial({
@@ -575,7 +617,17 @@ export class WorldSceneController {
     midRidge.position.z = -48;
     this.scene.add(midRidge);
 
-    // PBR Terrain Road & Cliff Strata with crisp procedural rock fracture bump map
+    // Vice Coastway Ocean Horizon + Art Deco Skyline Silhouette
+    this.viceHorizonGroup = this.createViceBackdrop();
+    this.viceHorizonGroup.visible = false;
+    this.scene.add(this.viceHorizonGroup);
+
+    // Countryside Distant Wind Turbines
+    this.countrysideBackdropGroup = this.createCountrysideBackdrop();
+    this.countrysideBackdropGroup.visible = false;
+    this.scene.add(this.countrysideBackdropGroup);
+
+    // PBR Terrain Road, Overhanging Turf/Asphalt Lip & Cliff Strata
     this.terrainBumpTex = createSurfaceBumpTexture(this.maxAniso, 1.32);
     this.woodTex = createWoodPlankTexture(this.maxAniso);
 
@@ -605,7 +657,31 @@ export class WorldSceneController {
     this.cliffMesh.frustumCulled = false;
     this.scene.add(this.cliffMesh);
 
-    // Sculpted Title Crawl Rock Shelf Prop Group
+    this.lipGeo = this.createRibbonGeometry(TERRAIN_SEGMENTS);
+    this.lipMat = new THREE.MeshStandardMaterial({
+      roughness: 0.9,
+      metalness: 0.02,
+      vertexColors: true,
+    });
+    this.lipMesh = new THREE.Mesh(this.lipGeo, this.lipMat);
+    this.lipMesh.receiveShadow = true;
+    this.lipMesh.frustumCulled = false;
+    this.scene.add(this.lipMesh);
+
+    // 3D Personal Best Finish Banner + CLIMB START & SUMMIT FINISH Gates
+    this.finishBannerGroup = this.createFinishBanner('BEST RECORD', '#fbbf24');
+    this.finishBannerGroup.visible = false;
+    this.scene.add(this.finishBannerGroup);
+
+    this.startGateGroup = this.createFinishBanner('CLIMB START', '#34d399');
+    this.startGateGroup.visible = false;
+    this.scene.add(this.startGateGroup);
+
+    this.summitGateGroup = this.createSummitGate();
+    this.summitGateGroup.visible = false;
+    this.scene.add(this.summitGateGroup);
+
+    // Showroom Level Circular Turntable Group
     this.titleRockGroup = new THREE.Group();
     this.scene.add(this.titleRockGroup);
 
@@ -712,6 +788,25 @@ export class WorldSceneController {
     if (this.particleMesh.instanceColor) this.particleMesh.instanceColor.needsUpdate = true;
     this.scene.add(this.particleMesh);
 
+    // Pooled Tire Skidmarks / Tread Tracks Decal InstancedMesh
+    const skidGeo = new THREE.PlaneGeometry(0.9, 1.85);
+    skidGeo.rotateX(-Math.PI / 2);
+    const skidMat = new THREE.MeshBasicMaterial({
+      color: '#111827',
+      transparent: true,
+      opacity: 0.48,
+      depthWrite: false,
+    });
+    this.skidMesh = new THREE.InstancedMesh(skidGeo, skidMat, MAX_SKIDMARKS);
+    this.skidMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.skidMesh.frustumCulled = false;
+    _mat4.makeScale(0, 0, 0);
+    for (let i = 0; i < MAX_SKIDMARKS; i++) {
+      this.skidMesh.setMatrixAt(i, _mat4);
+    }
+    this.skidMesh.instanceMatrix.needsUpdate = true;
+    this.scene.add(this.skidMesh);
+
     // Ambient Snow / Desert Dust / Lunar Floating Motes
     const snowCount = 180;
     this.ambientSnowPos = new Float32Array(snowCount * 3);
@@ -733,6 +828,28 @@ export class WorldSceneController {
     );
     this.ambientSnowMesh.visible = false;
     this.scene.add(this.ambientSnowMesh);
+
+    // Wet / Storm Weather Rain Particles
+    const rainCount = 260;
+    this.rainPos = new Float32Array(rainCount * 3);
+    for (let i = 0; i < rainCount; i++) {
+      this.rainPos[i * 3] = (Math.random() - 0.5) * 62;
+      this.rainPos[i * 3 + 1] = Math.random() * 28 - 4;
+      this.rainPos[i * 3 + 2] = (Math.random() - 0.5) * 18;
+    }
+    const rainGeo = new THREE.BufferGeometry();
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(this.rainPos, 3));
+    this.rainMesh = new THREE.Points(
+      rainGeo,
+      new THREE.PointsMaterial({
+        color: '#bae6fd',
+        size: 0.16,
+        transparent: true,
+        opacity: 0.72,
+      }),
+    );
+    this.rainMesh.visible = false;
+    this.scene.add(this.rainMesh);
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
     this.resizeObserver.observe(container);
@@ -786,6 +903,175 @@ export class WorldSceneController {
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setIndex(indices);
     return geo;
+  }
+
+  private createViceBackdrop(): THREE.Group {
+    const g = new THREE.Group();
+    const ocean = new THREE.Mesh(
+      new THREE.PlaneGeometry(240, 28),
+      new THREE.MeshStandardMaterial({
+        color: '#0369a1',
+        roughness: 0.16,
+        metalness: 0.72,
+      }),
+    );
+    ocean.rotation.x = -Math.PI / 2;
+    ocean.position.set(0, -1.8, -58);
+    g.add(ocean);
+
+    const beach = new THREE.Mesh(
+      new THREE.PlaneGeometry(240, 12),
+      new THREE.MeshStandardMaterial({ color: '#f3d19c', roughness: 0.92 }),
+    );
+    beach.rotation.x = -Math.PI / 2;
+    beach.position.set(0, -1.65, -42);
+    g.add(beach);
+
+    const decoColors = ['#2e1065', '#4c1d95', '#831843', '#1e1b4b', '#312e81'];
+    const neonColors = ['#ff2a85', '#00f5ff', '#facc15', '#fb7185'];
+    for (let i = 0; i < 14; i++) {
+      const bx = -72 + i * 11 + (i % 2) * 2.2;
+      const bw = 4.5 + (i % 3) * 1.6;
+      const bh = 9 + (i % 4) * 3.8;
+      const bldg = new THREE.Mesh(
+        new THREE.BoxGeometry(bw, bh, 3.2),
+        new THREE.MeshStandardMaterial({
+          color: decoColors[i % decoColors.length],
+          roughness: 0.55,
+          metalness: 0.25,
+        }),
+      );
+      bldg.position.set(bx, bh * 0.5 - 2.2, -72 - (i % 3) * 6);
+      g.add(bldg);
+
+      const trim = new THREE.Mesh(
+        new THREE.BoxGeometry(bw + 0.18, 0.28, 3.3),
+        new THREE.MeshBasicMaterial({ color: neonColors[i % neonColors.length] }),
+      );
+      trim.position.set(bx, bh - 2.25, -72 - (i % 3) * 6);
+      g.add(trim);
+    }
+    return g;
+  }
+
+  private createCountrysideBackdrop(): THREE.Group {
+    const g = new THREE.Group();
+    const steel = new THREE.MeshStandardMaterial({ color: '#e2e8f0', roughness: 0.45, metalness: 0.2 });
+    [-32, -8, 22, 46].forEach((tx, idx) => {
+      const tower = new THREE.Group();
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.26, 9.5, 8), steel);
+      mast.position.y = 4.75;
+      const hub = new THREE.Group();
+      hub.position.set(0, 9.4, 0.24);
+      hub.name = `turbineHub_${idx}`;
+      for (let b = 0; b < 3; b++) {
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.4, 0.06), steel);
+        blade.position.y = 1.7;
+        const pivot = new THREE.Group();
+        pivot.rotation.z = (b / 3) * Math.PI * 2;
+        pivot.add(blade);
+        hub.add(pivot);
+      }
+      tower.add(mast, hub);
+      tower.position.set(tx, -1.5 + (idx % 2) * 1.4, -54);
+      g.add(tower);
+    });
+    return g;
+  }
+
+  private createFinishBanner(label = 'BEST RECORD', accentColor = '#fbbf24'): THREE.Group {
+    const g = new THREE.Group();
+    const poleMat = new THREE.MeshStandardMaterial({ color: '#e2e8f0', metalness: 0.7, roughness: 0.3 });
+    [-2.5, 2.5].forEach((pz) => {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 5.2, 8), poleMat);
+      pole.position.set(0, 2.6, pz);
+      pole.castShadow = true;
+      g.add(pole);
+    });
+    const cacheKey = `__GATE_${label}__`;
+    let bannerTex = this.signTexCache.get(cacheKey);
+    if (!bannerTex) {
+      bannerTex = createSignpostTexture(label, this.maxAniso);
+      this.signTexCache.set(cacheKey, bannerTex);
+    }
+    const banner = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 1.05, 5.4),
+      new THREE.MeshStandardMaterial({ map: bannerTex, roughness: 0.38 }),
+    );
+    banner.position.set(0, 4.65, 0);
+    g.add(banner);
+
+    const trim = new THREE.Mesh(
+      new THREE.BoxGeometry(0.26, 0.12, 5.45),
+      new THREE.MeshBasicMaterial({ color: accentColor }),
+    );
+    trim.position.set(0, 5.22, 0);
+    g.add(trim);
+    return g;
+  }
+
+  private createSummitGate(): THREE.Group {
+    const g = new THREE.Group();
+    const poleMat = new THREE.MeshStandardMaterial({ color: '#f8fafc', metalness: 0.78, roughness: 0.25 });
+    const goldMat = new THREE.MeshStandardMaterial({
+      color: '#fbbf24',
+      emissive: '#d97706',
+      emissiveIntensity: 0.35,
+      metalness: 0.7,
+      roughness: 0.3,
+    });
+    [-2.7, 2.7].forEach((pz) => {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 6.2, 10), poleMat);
+      pole.position.set(0, 3.1, pz);
+      pole.castShadow = true;
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.45, 10), goldMat);
+      base.position.set(0, 0.22, pz);
+      g.add(pole, base);
+    });
+
+    // Checkered + SUMMIT FINISH arch
+    const cv = document.createElement('canvas');
+    cv.width = 512;
+    cv.height = 128;
+    const ctx = cv.getContext('2d');
+    if (ctx) {
+      const sq = 16;
+      for (let y = 0; y < 32; y += sq) {
+        for (let x = 0; x < 512; x += sq) {
+          ctx.fillStyle = ((x / sq + y / sq) % 2 === 0) ? '#0f172a' : '#f8fafc';
+          ctx.fillRect(x, y, sq, sq);
+        }
+      }
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 32, 512, 64);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 42px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('SUMMIT FINISH', 256, 65);
+      for (let y = 96; y < 128; y += sq) {
+        for (let x = 0; x < 512; x += sq) {
+          ctx.fillStyle = ((x / sq + y / sq) % 2 === 0) ? '#f8fafc' : '#0f172a';
+          ctx.fillRect(x, y, sq, sq);
+        }
+      }
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.anisotropy = this.maxAniso;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.signTexCache.set('__SUMMIT_FINISH__', tex);
+
+    const arch = new THREE.Mesh(
+      new THREE.BoxGeometry(0.28, 1.45, 5.8),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.32 }),
+    );
+    arch.position.set(0, 5.4, 0);
+    g.add(arch);
+
+    const crown = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.16, 5.9), goldMat);
+    crown.position.set(0, 6.2, 0);
+    g.add(crown);
+    return g;
   }
 
   private createBridgeMesh(): THREE.Group {
@@ -926,69 +1212,148 @@ export class WorldSceneController {
     return g;
   }
 
-  public applyStageEnvironment(stage: StageConfig): void {
+  public applyStageEnvironment(
+    stage: StageConfig,
+    weather: WeatherCondition = this.activeClimbSetup.weather,
+    timeOfDay: TimeOfDay = this.activeClimbSetup.timeOfDay,
+  ): void {
     this.activeStage = stage;
-    this.skyUniforms.topColor.value.set(stage.skyTop);
-    this.skyUniforms.bottomColor.value.set(stage.skyHorizon);
+    this.activeClimbSetup = { ...this.activeClimbSetup, weather, timeOfDay };
+
+    const isNight = timeOfDay === 'night';
+    const isDawn = timeOfDay === 'dawn';
+    const isDusk = timeOfDay === 'dusk';
+    const isStorm = weather === 'storm';
+    const isWet = weather === 'wet';
+
+    const topCol = new THREE.Color(stage.skyTop);
+    const horCol = new THREE.Color(stage.skyHorizon);
+    const fogCol = new THREE.Color(stage.fogColor);
+    const sunCol = new THREE.Color(stage.sunColor);
+
+    if (stage.id !== 'moon') {
+      if (isDawn) {
+        topCol.lerp(new THREE.Color('#273b69'), 0.48);
+        horCol.lerp(new THREE.Color('#fdba74'), 0.62);
+        fogCol.lerp(new THREE.Color('#f5b98e'), 0.55);
+        sunCol.set('#ffcf91');
+      } else if (isDusk) {
+        topCol.lerp(new THREE.Color('#1d1942'), 0.65);
+        horCol.lerp(new THREE.Color('#fb7185'), 0.58);
+        fogCol.lerp(new THREE.Color('#6b3b6e'), 0.52);
+        sunCol.set('#ff9e7d');
+      } else if (isNight) {
+        topCol.lerp(new THREE.Color('#040814'), 0.85);
+        horCol.lerp(new THREE.Color('#0f1d38'), 0.82);
+        fogCol.lerp(new THREE.Color('#0b1529'), 0.82);
+        sunCol.set('#93c5fd');
+      }
+      if (isStorm) {
+        topCol.lerp(new THREE.Color('#1e293b'), 0.6);
+        horCol.lerp(new THREE.Color('#475569'), 0.55);
+        fogCol.lerp(new THREE.Color('#334155'), 0.6);
+      } else if (isWet) {
+        topCol.lerp(new THREE.Color('#475569'), 0.35);
+        horCol.lerp(new THREE.Color('#94a3b8'), 0.3);
+      }
+    }
+
+    this.skyUniforms.topColor.value.copy(topCol);
+    this.skyUniforms.bottomColor.value.copy(horCol);
     this.skyUniforms.sunGlowColor.value.set(
-      stage.id === 'frost_peaks'
-        ? '#60a5fa'
-        : stage.id === 'vice_coast'
-          ? '#ff7d6b'
-          : stage.id === 'moon'
-            ? '#475569'
-            : '#ffdc9e',
+      isNight
+        ? '#38bdf8'
+        : isDawn || isDusk
+          ? '#fb923c'
+          : stage.id === 'frost_peaks'
+            ? '#60a5fa'
+            : stage.id === 'vice_coast'
+              ? '#ff7d6b'
+              : stage.id === 'moon'
+                ? '#475569'
+                : '#ffdc9e',
     );
     this.skyUniforms.cloudDark.value.set(
-      stage.id === 'frost_peaks'
-        ? '#14243e'
-        : stage.id === 'vice_coast'
-          ? '#3b1c4a'
-          : stage.id === 'red_canyon'
-            ? '#332b29'
-            : '#3d4754',
+      isStorm
+        ? '#1e293b'
+        : isNight
+          ? '#0f172a'
+          : stage.id === 'frost_peaks'
+            ? '#14243e'
+            : stage.id === 'vice_coast'
+              ? '#3b1c4a'
+              : stage.id === 'red_canyon'
+                ? '#332b29'
+                : '#3d4754',
     );
     this.skyUniforms.cloudLit.value.set(
-      stage.id === 'frost_peaks'
-        ? '#7dd3fc'
-        : stage.id === 'vice_coast'
-          ? '#fda4af'
-          : '#f8e0b8',
+      isStorm
+        ? '#64748b'
+        : isNight
+          ? '#334155'
+          : isDusk
+            ? '#fda4af'
+            : isDawn
+              ? '#fed7aa'
+              : stage.id === 'frost_peaks'
+                ? '#7dd3fc'
+                : stage.id === 'vice_coast'
+                  ? '#fda4af'
+                  : '#f8e0b8',
     );
     this.skyUniforms.overcastMix.value =
-      stage.id === 'moon' ? 0.0 : stage.id === 'frost_peaks' ? 0.42 : 0.78;
-    this.scene.fog = new THREE.FogExp2(stage.fogColor, stage.fogDensity * 0.85);
+      stage.id === 'moon'
+        ? 0.0
+        : isStorm
+          ? 0.96
+          : isWet
+            ? 0.88
+            : stage.id === 'frost_peaks'
+              ? 0.42
+              : 0.78;
+    const weatherFogMult = isStorm ? 1.45 : isWet ? 1.18 : 0.85;
+    this.scene.fog = new THREE.FogExp2(fogCol.getHex(), stage.fogDensity * weatherFogMult);
 
-    this.sunLight.color.set(stage.sunColor);
-    this.sunLight.intensity = stage.sunIntensity;
-    this.hemiLight.color.set(stage.hemiSky);
+    const sunMult = isNight ? 0.42 : isDusk ? 0.72 : isDawn ? 0.85 : isStorm ? 0.62 : isWet ? 0.82 : 1.0;
+    this.sunLight.color.copy(sunCol);
+    this.sunLight.intensity = stage.sunIntensity * sunMult;
+    this.hemiLight.color.set(isNight ? '#3b5280' : stage.hemiSky);
     this.hemiLight.groundColor.set(stage.hemiGround);
-    this.hemiLight.intensity = stage.hemiIntensity;
+    this.hemiLight.intensity = stage.hemiIntensity * (isNight ? 0.62 : isStorm ? 0.78 : 1.0);
 
     const sunMat = this.sunDisc.material as THREE.MeshBasicMaterial;
     sunMat.color.set(
-      stage.id === 'moon'
+      isNight || stage.id === 'moon'
         ? '#e2e8f0'
-        : stage.id === 'frost_peaks'
-          ? '#a5d8ff'
-          : stage.id === 'vice_coast'
-            ? '#ff9e7d'
-            : '#fff3c4',
+        : isDawn || isDusk
+          ? '#fb923c'
+          : stage.id === 'frost_peaks'
+            ? '#a5d8ff'
+            : stage.id === 'vice_coast'
+              ? '#ff9e7d'
+              : '#fff3c4',
     );
-    sunMat.opacity =
-      stage.id === 'frost_peaks' ? 0.52 : stage.id === 'vice_coast' ? 0.92 : 0.86;
+    sunMat.opacity = isStorm
+      ? 0.25
+      : stage.id === 'frost_peaks'
+        ? 0.52
+        : stage.id === 'vice_coast'
+          ? 0.92
+          : 0.86;
     this.earthDisc.visible = stage.id === 'moon';
 
-    this.starPoints.visible = stage.hasStars;
-    this.auroraGroup.visible = stage.hasAurora;
-    // Procedural FBM shader renders realistic cloud strata & contrails directly on skyMesh
+    this.starPoints.visible = stage.hasStars || isNight || isDusk;
+    this.auroraGroup.visible = stage.hasAurora || (isNight && stage.id !== 'moon');
     this.cloudGroup.visible = false;
     this.balloonGroup.visible =
-      stage.id === 'countryside' || stage.id === 'vice_coast';
+      !isStorm && !isNight && (stage.id === 'countryside' || stage.id === 'vice_coast');
     this.ambientSnowMesh.visible = stage.hasSnowfall || stage.hasDustHaze;
     (this.ambientSnowMesh.material as THREE.PointsMaterial).color.set(
       stage.hasSnowfall ? '#ffffff' : '#e6a875',
     );
+    this.rainMesh.visible = (isWet || isStorm) && stage.id !== 'moon' && !stage.hasSnowfall;
+    (this.rainMesh.material as THREE.PointsMaterial).opacity = isStorm ? 0.88 : 0.58;
+
     this.gorgeWaterMesh.visible = stage.hasBridges;
     (this.gorgeWaterMesh.material as THREE.MeshStandardMaterial).color.set(
       stage.id === 'vice_coast'
@@ -1000,6 +1365,8 @@ export class WorldSceneController {
 
     this.farRidgeMat.color.set(stage.farRidgeColor);
     this.midRidgeMat.color.set(stage.midRidgeColor);
+    this.viceHorizonGroup.visible = stage.id === 'vice_coast';
+    this.countrysideBackdropGroup.visible = stage.id === 'countryside';
 
     this.roadTex?.dispose();
     this.strataTex?.dispose();
@@ -1016,6 +1383,7 @@ export class WorldSceneController {
       this.maxAniso,
     );
     this.roadMat.map = this.roadTex;
+    this.roadMat.roughness = isWet || isStorm ? 0.52 : 0.88;
     this.roadMat.needsUpdate = true;
     this.cliffMat.map = this.strataTex;
     this.cliffMat.needsUpdate = true;
@@ -1031,12 +1399,13 @@ export class WorldSceneController {
     });
     this.tunnelPool.forEach((t) => (t.visible = false));
 
+    const lightsActive = stage.headlightsOn || isNight || isDusk || isStorm;
     if (this.vehicleRig) {
       if (this.vehicleRig.headlightSpot) {
-        this.vehicleRig.headlightSpot.intensity = stage.headlightsOn ? 24 : 2.5;
+        this.vehicleRig.headlightSpot.intensity = lightsActive ? 24 : 2.5;
       }
       this.vehicleRig.headlightCones.forEach((c) => {
-        c.visible = stage.headlightsOn;
+        c.visible = lightsActive;
       });
     }
   }
@@ -1053,6 +1422,8 @@ export class WorldSceneController {
     accessories: VehicleAccessoryId[] = ['lightbar'],
     neonColorId: NeonColorId = 'off',
     liveryId: LiveryId = 'clean',
+    upgrades?: UpgradeLevels,
+    rideHeight = 0,
   ): void {
     this.activeVehicle = vehicle;
     this.activePaintId = paintId;
@@ -1060,6 +1431,8 @@ export class WorldSceneController {
     this.activeAccessories = accessories;
     this.activeNeonId = neonColorId;
     this.activeLiveryId = liveryId;
+    this.activeUpgrades = upgrades;
+    this.activeRideHeight = rideHeight;
     if (this.vehicleRig) {
       this.scene.remove(this.vehicleRig.root);
       this.vehicleRig.dispose();
@@ -1075,6 +1448,7 @@ export class WorldSceneController {
       neonColorId,
       liveryId,
       this.maxAniso,
+      upgrades,
     );
     this.vehicleRig.dirtMat.opacity = this.mode === 'PLAYING' ? this.dirtLevel * 0.9 : 0;
     if (this.vehicleRig.headlightSpot) {
@@ -1091,8 +1465,46 @@ export class WorldSceneController {
     if (this.ghostRig && mode !== 'PLAYING') {
       this.ghostRig.root.visible = false;
     }
+    if (this.aiRig && mode !== 'PLAYING') {
+      this.aiRig.root.visible = false;
+    }
+    if (this.vehicleRig && mode !== 'TITLE') {
+      this.vehicleRig.root.rotation.y = 0;
+    }
     this.titleRockGroup.visible = mode === 'TITLE';
     this.updatePerspectiveProjection();
+  }
+
+  public setCameraMode(mode: CameraMode): void {
+    this.cameraMode = mode;
+  }
+
+  public getCameraMode(): CameraMode {
+    return this.cameraMode;
+  }
+
+  public setNnConfig(
+    weights: NnWeightsBlob | null,
+    hillMastery: Record<StageId, number>,
+    evolutionBonuses: NnEvolutionBonuses | null,
+    aiAutoTune: boolean,
+  ): void {
+    this.nnWeights = weights;
+    this.nnHillMastery = { ...hillMastery };
+    this.nnEvolutionBonuses = evolutionBonuses;
+    this.aiAutoTune = aiAutoTune;
+  }
+
+  public getLatestNnTelemetry(): NnLiveTelemetry | null {
+    return this.latestNnTelemetry;
+  }
+
+  public getAiPhysics(): HillClimbPhysics | null {
+    return this.aiPhysics;
+  }
+
+  public getRunElapsedSec(): number {
+    return this.runElapsedSec;
   }
 
   public setInput(input: Partial<InputState>): void {
@@ -1134,6 +1546,24 @@ export class WorldSceneController {
     }
   }
 
+  public setRivalMode(mode: RivalMode): void {
+    this.rivalMode = mode;
+    if (this.ghostRig && mode !== 'ghost') {
+      this.ghostRig.root.visible = false;
+    }
+    if (this.aiRig && mode !== 'ai') {
+      this.aiRig.root.visible = false;
+    }
+  }
+
+  public setAiAutoPilot(enabled: boolean): void {
+    this.aiAutoPilot = enabled;
+  }
+
+  public isAiAutoPilot(): boolean {
+    return this.aiAutoPilot;
+  }
+
   public startRun(
     save: SaveData,
     stage: StageConfig,
@@ -1143,48 +1573,103 @@ export class WorldSceneController {
       onCoin: (value: number, x: number, y: number) => void;
       onFuel: (x: number, y: number) => void;
       onStunt: (title: string, bonusCoins: number, flipsAdded: number) => void;
-      onLanding: (intensity: number, surface: string) => void;
+      onLanding: (intensity: number, surface: SurfaceType, grade?: LandingGrade | null) => void;
       onGearShift?: (gear: number) => void;
+      onTurboSurge?: () => void;
+      onJumpShock?: () => void;
+      onRollcageBreak?: () => void;
+      onScrape?: (intensity: number) => void;
+      onSummitCrossed?: () => void;
+      onHumanSample?: (sample: NnTrainingSample) => void;
       onCrash: (reason: string) => void;
     },
+    runOptions?: {
+      climbSetup?: ClimbSetupConfig;
+      climbTireId?: ClimbTireId;
+      watchAiMode?: boolean;
+      aiAutoTune?: boolean;
+      nnWeights?: NnWeightsBlob | null;
+      hillMastery?: Record<StageId, number>;
+      evolutionBonuses?: NnEvolutionBonuses | null;
+    },
   ): HillClimbPhysics {
-    if (this.activeStage.id !== stage.id) {
-      this.applyStageEnvironment(stage);
+    const setup = runOptions?.climbSetup ?? save.climbSetup ?? DEFAULT_CLIMB_SETUP;
+    this.activeClimbSetup = { ...setup };
+    this.watchAiMode = Boolean(runOptions?.watchAiMode);
+    this.aiAutoTune = runOptions?.aiAutoTune ?? save.aiAutoTune ?? true;
+    if (runOptions?.nnWeights !== undefined) this.nnWeights = runOptions.nnWeights;
+    if (runOptions?.hillMastery) this.nnHillMastery = { ...runOptions.hillMastery };
+    if (runOptions?.evolutionBonuses !== undefined) {
+      this.nnEvolutionBonuses = runOptions.evolutionBonuses;
     }
+    this.onHumanSampleCallback = callbacks.onHumanSample ?? null;
+    this.humanSampleAccum = 0;
+    this.latestNnTelemetry = null;
+
+    this.applyStageEnvironment(stage, setup.weather, setup.timeOfDay);
+    this.stageBestMeters = Math.floor(save.stageBests[stage.id] ?? 0);
     const paintId = save.vehiclePaints[vehicle.id] || vehicle.defaultPaintId;
     const wheelId = save.vehicleWheels[vehicle.id] || 'steel';
+    const climbTireId =
+      runOptions?.climbTireId ?? save.vehicleClimbTires?.[vehicle.id] ?? 'all_terrain';
     const acc = save.vehicleAccessories?.[vehicle.id] ?? ['lightbar'];
     const neonId = save.vehicleNeons?.[vehicle.id] ?? 'off';
     const liveryId = save.vehicleLiveries?.[vehicle.id] ?? 'clean';
+    const upgrades = save.upgrades?.[vehicle.id];
+    const rideHeight = save.tuning?.rideHeight ?? 0;
     const accKey = acc.join(',');
     const prevAccKey = this.activeAccessories.join(',');
+    const upgKey = upgrades ? `${upgrades.engine}_${upgrades.suspension}_${upgrades.tires}_${upgrades.awd}_${upgrades.fuel}` : '';
+    const prevUpgKey = this.activeUpgrades
+      ? `${this.activeUpgrades.engine}_${this.activeUpgrades.suspension}_${this.activeUpgrades.tires}_${this.activeUpgrades.awd}_${this.activeUpgrades.fuel}`
+      : '';
+    const lightsActive =
+      stage.headlightsOn ||
+      setup.timeOfDay === 'night' ||
+      setup.timeOfDay === 'dusk' ||
+      setup.weather === 'storm';
+
     if (
       this.activeVehicle.id !== vehicle.id ||
       this.activePaintId !== paintId ||
       this.activeWheelId !== wheelId ||
       accKey !== prevAccKey ||
       this.activeNeonId !== neonId ||
-      this.activeLiveryId !== liveryId
+      this.activeLiveryId !== liveryId ||
+      upgKey !== prevUpgKey ||
+      this.activeRideHeight !== rideHeight
     ) {
       this.rebuildVehicleModel(
         vehicle,
         paintId,
         wheelId,
-        stage.headlightsOn,
+        lightsActive,
         acc,
         neonId,
         liveryId,
+        upgrades,
+        rideHeight,
       );
     } else if (this.vehicleRig) {
       if (this.vehicleRig.headlightSpot) {
-        this.vehicleRig.headlightSpot.intensity = stage.headlightsOn ? 24 : 2.5;
+        this.vehicleRig.headlightSpot.intensity = lightsActive ? 24 : 2.5;
       }
-      this.vehicleRig.headlightCones.forEach((c) => (c.visible = stage.headlightsOn));
+      this.vehicleRig.headlightCones.forEach((c) => (c.visible = lightsActive));
     }
 
-    // Reset dynamic mud & off-road grime overlay cleanly at start of every run
+    if (this.vehicleRig) {
+      this.vehicleRig.root.rotation.y = 0;
+    }
+
+    // Reset dynamic mud & skidmark decals cleanly at start of every run
     this.dirtLevel = 0;
     this.lastDirtX = START_X;
+    this.lastSkidX = -99999;
+    _mat4.makeScale(0, 0, 0);
+    for (let i = 0; i < MAX_SKIDMARKS; i++) {
+      this.skidMesh.setMatrixAt(i, _mat4);
+    }
+    this.skidMesh.instanceMatrix.needsUpdate = true;
     if (this.vehicleRig) {
       this.vehicleRig.dirtMat.opacity = 0;
     }
@@ -1192,25 +1677,66 @@ export class WorldSceneController {
     this.camZoom = save.tuning.cameraZoom || DEFAULT_TUNING.cameraZoom;
     this.dynamicOrthoScale = 1.0;
     this.setCameraShakeMode(save.settings?.cameraShake ?? 'full');
-    this.setShowGhost(save.settings?.showGhost ?? true);
+    this.setShowGhost(setup.climbMode === 'ghost' || (save.settings?.showGhost ?? true));
+    this.rivalMode =
+      this.watchAiMode || setup.climbMode === 'time_attack'
+        ? 'off'
+        : setup.climbMode === 'head_to_head'
+          ? 'ai'
+          : 'ghost';
+    this.activeEquippedParts = save.vehicleTuningParts?.[vehicle.id] ?? [];
     this.simAccum = 0;
     this.particles.forEach((p) => (p.active = false));
 
-    // Ghost Rival playback + recording setup (active ONLY during race, subtle golden-amber silhouette)
+    // Ghost Rival playback + recording setup
     if (this.ghostRig) {
       this.scene.remove(this.ghostRig.root);
       this.ghostRig.dispose();
       this.ghostRig = null;
+    }
+    if (this.aiRig) {
+      this.scene.remove(this.aiRig.root);
+      this.aiRig.dispose();
+      this.aiRig = null;
     }
     this.activeGhostTrack = save.stageGhosts?.[stage.id] ?? [];
     this.recordedGhost = [];
     this.runElapsedSec = 0;
     this.ghostSampleAccum = 0;
     if (this.activeGhostTrack.length >= 2) {
-      this.ghostRig = buildGhostVehicle3D(vehicle);
+      this.ghostRig = buildGhostVehicle3D(vehicle, '#fbbf24', 0.28);
       this.ghostRig.root.visible = false;
       this.scene.add(this.ghostRig.root);
     }
+
+    const activeBonuses = this.aiAutoTune ? this.nnEvolutionBonuses : null;
+
+    // Live Autonomous Neural Network AI Racer
+    this.aiRig = buildGhostVehicle3D(vehicle, '#22d3ee', 0.54);
+    this.aiRig.root.visible = false;
+    this.scene.add(this.aiRig.root);
+    const noop = () => {};
+    this.aiPhysics = new HillClimbPhysics(
+      stage,
+      vehicle,
+      save,
+      {
+        onCoin: noop,
+        onFuel: noop,
+        onStunt: noop,
+        onLanding: noop,
+        onCrash: noop,
+        onParticle: noop,
+      },
+      false,
+      {
+        weather: setup.weather,
+        climbTireId,
+        aiBonuses: this.nnEvolutionBonuses,
+        difficulty: setup.difficulty,
+        isAiRacer: true,
+      },
+    );
 
     this.physics = new HillClimbPhysics(
       stage,
@@ -1250,20 +1776,31 @@ export class WorldSceneController {
           callbacks.onFuel(x, y);
         },
         onStunt: callbacks.onStunt,
-        onLanding: (intensity, surface) => {
-          // Heavy off-road landings kick mud/dust onto body panels
+        onLanding: (intensity, surface, grade) => {
           this.dirtLevel = Math.min(1, this.dirtLevel + Math.min(0.32, intensity * 0.18));
-          callbacks.onLanding(intensity, surface);
+          callbacks.onLanding(intensity, surface, grade);
         },
         onGearShift: (gear) => {
           this.triggerBackfire();
           const cb = callbacks.onGearShift ?? this.onGearShiftCallback;
           cb?.(gear);
         },
+        onTurboSurge: callbacks.onTurboSurge,
+        onJumpShock: callbacks.onJumpShock,
+        onRollcageBreak: callbacks.onRollcageBreak,
+        onScrape: callbacks.onScrape,
+        onSummitCrossed: callbacks.onSummitCrossed,
         onCrash: callbacks.onCrash,
         onParticle: (p) => this.spawnParticle(p),
       },
       consumeBoosters,
+      {
+        weather: setup.weather,
+        climbTireId,
+        aiBonuses: activeBonuses,
+        difficulty: setup.difficulty,
+        isAiRacer: false,
+      },
     );
 
     const s0 = this.physics.state;
@@ -1281,17 +1818,37 @@ export class WorldSceneController {
   }
 
   public getGhostDeltaMeters(): number | null {
-    if (
-      this.mode !== 'PLAYING' ||
-      !this.physics ||
-      !this.showGhost ||
-      this.activeGhostTrack.length < 2
-    ) {
-      return null;
+    return this.getRivalDelta().delta;
+  }
+
+  public getRivalDelta(): { delta: number | null; label: 'AI' | 'RIVAL' } {
+    if (this.mode !== 'PLAYING' || !this.physics || this.watchAiMode) {
+      return { delta: null, label: 'AI' };
     }
-    const ghostSample = interpolateGhostSample(this.activeGhostTrack, this.runElapsedSec);
-    if (!ghostSample) return null;
-    return Math.round(this.physics.state.x - ghostSample.x);
+    if (this.rivalMode === 'ai' && this.aiPhysics) {
+      return {
+        delta: Math.round(this.physics.state.x - this.aiPhysics.state.x),
+        label: 'AI',
+      };
+    }
+    if (
+      this.rivalMode === 'ghost' &&
+      this.showGhost &&
+      this.activeGhostTrack.length >= 2
+    ) {
+      const ghostSample = interpolateGhostSample(this.activeGhostTrack, this.runElapsedSec);
+      if (!ghostSample) return { delta: null, label: 'RIVAL' };
+      return {
+        delta: Math.round(this.physics.state.x - ghostSample.x),
+        label: 'RIVAL',
+      };
+    }
+    return { delta: null, label: 'AI' };
+  }
+
+  public getAiMarginMeters(): number | null {
+    if (this.rivalMode !== 'ai' || !this.physics || !this.aiPhysics || this.watchAiMode) return null;
+    return Math.round(this.physics.state.x - this.aiPhysics.state.x);
   }
 
   public getPhysics(): HillClimbPhysics | null {
@@ -1379,13 +1936,64 @@ export class WorldSceneController {
       this.simAccum += dt;
       const fixedStep = 1 / 180;
       let substeps = 0;
+      const hillMasteryPct = this.nnHillMastery[this.activeStage.id] ?? 15;
+      const diffScale =
+        this.activeClimbSetup.difficulty === 'rookie'
+          ? 0.78
+          : this.activeClimbSetup.difficulty === 'extreme'
+            ? 1.07
+            : 0.94;
+
       while (this.simAccum >= fixedStep && substeps < 12) {
-        this.physics.step(fixedStep, this.input);
+        let playerStepInput = this.input;
+        if (this.aiAutoPilot || this.watchAiMode) {
+          const res = computeHybridNnControl(
+            this.physics.state,
+            this.activeVehicle,
+            this.activeStage,
+            this.nnWeights,
+            hillMasteryPct,
+            this.activeEquippedParts,
+            1.0,
+          );
+          playerStepInput = res.input;
+          this.latestNnTelemetry = res.telemetry;
+        }
+        this.physics.step(fixedStep, playerStepInput);
+
+        if (
+          this.aiPhysics &&
+          this.rivalMode === 'ai' &&
+          !this.watchAiMode &&
+          !this.aiPhysics.state.crashed
+        ) {
+          const aiRes = computeHybridNnControl(
+            this.aiPhysics.state,
+            this.activeVehicle,
+            this.activeStage,
+            this.nnWeights,
+            hillMasteryPct,
+            this.activeEquippedParts,
+            diffScale,
+          );
+          this.aiPhysics.step(fixedStep, aiRes.input);
+        }
+
         this.simAccum -= fixedStep;
         substeps++;
       }
 
-      if (!this.physics.state.crashed) {
+      if (!this.aiAutoPilot && !this.watchAiMode && this.nnWeights) {
+        const feat = extractNnFeatures(this.physics.state, this.activeVehicle, this.activeStage);
+        const pass = forwardPass(this.nnWeights, feat);
+        this.latestNnTelemetry = {
+          ...pass.telemetry,
+          nnAuthority: 0,
+          modeLabel: 'SHADOW OBSERVING HUMAN',
+        };
+      }
+
+      if (!this.physics.state.crashed && !this.physics.state.summitCrossed) {
         this.runElapsedSec += dt;
         this.ghostSampleAccum += dt;
         if (this.ghostSampleAccum >= 0.12 && this.recordedGhost.length < 2500) {
@@ -1397,6 +2005,23 @@ export class WorldSceneController {
             y: Number(st.y.toFixed(3)),
             a: Number(st.angle.toFixed(4)),
           });
+        }
+
+        // Stream human driving samples every ~0.16s when driving unassisted
+        if (!this.aiAutoPilot && !this.watchAiMode && this.onHumanSampleCallback) {
+          this.humanSampleAccum += dt;
+          if (this.humanSampleAccum >= 0.16) {
+            this.humanSampleAccum = 0;
+            const sample = captureHumanClimbSample(
+              this.physics.state,
+              this.input,
+              this.activeVehicle,
+              this.activeStage,
+            );
+            if (sample) {
+              this.onHumanSampleCallback(sample);
+            }
+          }
         }
       }
     }
@@ -1425,44 +2050,81 @@ export class WorldSceneController {
 
       const v = this.activeVehicle;
       const heroX = START_X + 62;
-      const groundL = sampleDriveHeight(heroX - 1.2, this.activeStage);
-      const groundR = sampleDriveHeight(heroX + 1.2, this.activeStage);
       const groundAtHero = sampleDriveHeight(heroX, this.activeStage);
-      const slopeAngle = Math.atan2(groundR - groundL, 2.4);
-      const climbAngle = THREE.MathUtils.clamp(slopeAngle + 0.14, 0.1, 0.34);
+      const platformTopY = groundAtHero + 0.55;
 
-      const susp = v.suspensionRest * 0.62;
-      const idleBreath = Math.sin(this.elapsed * 0.9) * 0.012;
-      const cs = Math.cos(climbAngle);
-      const sn = Math.sin(climbAngle);
+      // Vehicle sits completely flat and level on the circular turntable disc
+      const climbAngle = 0;
+      const susp = (v.suspensionRest + this.activeRideHeight) * 0.62;
+      const idleBreath = Math.sin(this.elapsed * 0.9) * 0.008;
+      const wheelR = v.wheelRadius * (1 + Math.min(0.085, ((this.activeUpgrades?.tires ?? 1) - 1) * 0.009));
 
-      // Anchor tires solidly onto the sloped crawl ridge with subtle suspension breathing
-      rig.root.position.set(heroX, groundAtHero + v.wheelRadius + susp * cs + 0.04, 0);
+      const turntableYaw = this.elapsed * 0.28;
+      if (this.turntableDisc) {
+        this.turntableDisc.rotation.y = turntableYaw;
+      }
+
+      rig.root.position.set(heroX, platformTopY + wheelR + susp + 0.02, 0);
+      rig.root.rotation.y = turntableYaw;
       rig.chassisGroup.position.set(0, idleBreath, 0);
       rig.chassisGroup.rotation.z = climbAngle;
 
       const wb = v.wheelbase;
-      rig.wheelRearGroup.position.set(-wb * 0.5 * cs + susp * sn, -wb * 0.5 * sn - susp * cs, 0);
-      rig.wheelFrontGroup.position.set(wb * 0.5 * cs + susp * sn, wb * 0.5 * sn - susp * cs, 0);
+      const wrX = -wb * 0.5;
+      const wrY = -susp;
+      const wfX = wb * 0.5;
+      const wfY = -susp;
+      rig.wheelRearGroup.position.set(wrX, wrY, 0);
+      rig.wheelFrontGroup.position.set(wfX, wfY, 0);
       rig.nitroGlow.visible = false;
       rig.backfireGlow.visible = false;
       rig.brakeLightMat.emissiveIntensity = 0.85;
-      rig.driverTorso.rotation.z = -0.06;
-      rig.driverHead.rotation.z = -0.04;
+      rig.driverTorso.rotation.z = 0;
+      rig.driverHead.rotation.z = 0;
       if (rig.headlightSpot) {
-        rig.headlightSpot.intensity = 28;
+        rig.headlightSpot.intensity = 22;
       }
       rig.headlightCones.forEach((c) => {
         c.visible = true;
       });
-      if (rig.whipFlag) {
-        rig.whipFlag.rotation.y = Math.sin(this.elapsed * 3.2) * 0.16;
+      if (rig.whipMastGroup) {
+        rig.whipMastGroup.rotation.z = 0.06 + Math.sin(this.elapsed * 2.0) * 0.03;
       }
+      if (rig.whipFlag) {
+        rig.whipFlag.rotation.y = Math.sin(this.elapsed * 3.0) * 0.14;
+      }
+      if (rig.activeWing) {
+        rig.activeWing.rotation.z = 0.06;
+      }
+      if (rig.riderLeanGroup) {
+        rig.riderLeanGroup.rotation.z = 0;
+      }
+      // Ground per-tire and chassis AO shadows flat onto circular turntable surface
+      rig.tireShadowRear.visible = true;
+      rig.tireShadowRear.position.set(wrX, wrY - wheelR + 0.025, 0);
+      rig.tireShadowRear.rotation.z = 0;
+      (rig.tireShadowRear.material as THREE.MeshBasicMaterial).opacity = 0.72;
+      rig.tireShadowFront.visible = true;
+      rig.tireShadowFront.position.set(wfX, wfY - wheelR + 0.025, 0);
+      rig.tireShadowFront.rotation.z = 0;
+      (rig.tireShadowFront.material as THREE.MeshBasicMaterial).opacity = 0.72;
+      rig.chassisAoShadow.visible = true;
+      rig.chassisAoShadow.position.set(0, -susp - wheelR + 0.03, 0);
+      rig.chassisAoShadow.rotation.z = 0;
+      (rig.chassisAoShadow.material as THREE.MeshBasicMaterial).opacity = 0.56;
+
       if (rig.neonPoolMesh) {
-        rig.neonPoolMesh.visible = false;
+        rig.neonPoolMesh.visible = this.activeNeonId !== 'off';
+        rig.neonPoolMesh.position.set(0, -susp - wheelR + 0.035, 0);
+      }
+      if (rig.neonLight) {
+        rig.neonLight.intensity = this.activeNeonId !== 'off' ? 3.8 : 0;
       }
       if (this.ghostRig) {
         this.ghostRig.root.visible = false;
+      }
+      if (this.aiRig) {
+        this.aiRig.root.visible = false;
       }
 
       this.updateShocksAndArms(rig, susp - idleBreath, susp - idleBreath);
@@ -1470,24 +2132,20 @@ export class WorldSceneController {
       const w = Math.max(1, this.container.clientWidth);
       const h = Math.max(1, this.container.clientHeight);
       const aspect = w / h;
-      const distScale = aspect < 1 ? 1.34 : 1.0;
+      const distScale = aspect < 1 ? 1.38 : 1.04;
 
-      const targetCamX = heroX + 6.9 * distScale + Math.sin(this.elapsed * 0.25) * 0.14;
-      const targetCamY = groundAtHero + 0.72 + Math.cos(this.elapsed * 0.22) * 0.05;
-      const targetCamZ = 5.9 * distScale;
+      const targetCamX = heroX + 4.3 * distScale;
+      const targetCamY = platformTopY + 1.9 * distScale;
+      const targetCamZ = 6.4 * distScale;
 
       this.camX = THREE.MathUtils.damp(this.camX, targetCamX, 5, dt);
       this.camY = THREE.MathUtils.damp(this.camY, targetCamY, 5, dt);
       this.camera.position.set(this.camX, this.camY, targetCamZ);
-      this.heroLookTarget.set(heroX + 2.15, groundAtHero + 0.96, 0);
+      this.heroLookTarget.set(heroX, platformTopY + 0.85, 0);
       this.camera.lookAt(this.heroLookTarget);
 
-      this.contactShadowMesh.visible = true;
-      this.contactShadowMesh.position.set(heroX, groundAtHero + 0.06, 0);
-      (this.contactShadowMesh.material as THREE.MeshBasicMaterial).opacity = 0.64;
-
-      this.sunLight.position.set(heroX - 24, groundAtHero + 18, 12);
-      this.sunLight.target.position.set(heroX + 1.5, groundAtHero + 0.6, 0);
+      this.sunLight.position.set(heroX - 20, platformTopY + 18, 14);
+      this.sunLight.target.position.set(heroX, platformTopY + 0.6, 0);
       return;
     }
 
@@ -1497,11 +2155,24 @@ export class WorldSceneController {
     const v = this.activeVehicle;
 
     rig.root.position.set(0, 0, 0);
+    rig.root.rotation.y = 0;
     rig.chassisGroup.position.set(s.x, s.y, 0);
     rig.chassisGroup.rotation.z = s.angle;
     rig.driverTorso.rotation.z = s.torsoAngle;
     rig.driverHead.rotation.z = s.headAngle;
     rig.brakeLightMat.emissiveIntensity = s.braking ? 3.5 : 0.7;
+
+    if (rig.riderLeanGroup) {
+      rig.riderLeanGroup.rotation.z = THREE.MathUtils.clamp(
+        -s.throttle * 0.24 - s.angle * 0.12,
+        -0.32,
+        0.2,
+      );
+    }
+    if (rig.activeWing) {
+      const targetWingRot = s.activeAeroActive ? 0.44 : 0.06;
+      rig.activeWing.rotation.z = THREE.MathUtils.damp(rig.activeWing.rotation.z, targetWingRot, 12, dt);
+    }
 
     // Auto-boost headlights & lightbeams inside dark cave tunnels
     const lightsHigh = this.activeStage.headlightsOn || s.inTunnel;
@@ -1512,13 +2183,16 @@ export class WorldSceneController {
       c.visible = lightsHigh;
     });
 
+    if (rig.whipMastGroup) {
+      rig.whipMastGroup.rotation.z = s.whipAngle;
+    }
     if (rig.whipFlag) {
       const windSpeed = 8 + Math.min(24, Math.hypot(s.vx, s.vy));
       rig.whipFlag.rotation.y = Math.sin(this.elapsed * windSpeed) * 0.34;
     }
 
-    rig.nitroGlow.visible = s.nitroActive;
-    if (s.nitroActive) {
+    rig.nitroGlow.visible = s.nitroActive || s.overchargedActive;
+    if (rig.nitroGlow.visible) {
       const flicker = 0.85 + Math.random() * 0.45;
       rig.nitroGlow.scale.set(flicker, 0.9 + Math.random() * 0.25, 0.9 + Math.random() * 0.25);
     }
@@ -1528,7 +2202,7 @@ export class WorldSceneController {
       this.backfireTimer = 0.09;
     }
     this.backfireTimer = Math.max(0, this.backfireTimer - dt);
-    rig.backfireGlow.visible = this.backfireTimer > 0 && !s.nitroActive;
+    rig.backfireGlow.visible = this.backfireTimer > 0 && !s.nitroActive && !s.overchargedActive;
     if (rig.backfireGlow.visible) {
       const bf = 0.85 + Math.random() * 0.5;
       rig.backfireGlow.scale.set(bf, 0.85 + Math.random() * 0.3, 0.85 + Math.random() * 0.3);
@@ -1541,15 +2215,44 @@ export class WorldSceneController {
     rig.wheelRearSpin.rotation.z = -s.rotR;
     rig.wheelFrontSpin.rotation.z = -s.rotF;
 
-    this.updateShocksAndArms(rig, v.suspensionRest - s.compR, v.suspensionRest - s.compF);
+    this.updateShocksAndArms(
+      rig,
+      s.effectiveSuspensionRest - s.compR,
+      s.effectiveSuspensionRest - s.compF,
+    );
 
-    // Dynamic off-road dirt/mud overlay accumulation from distance traveled + wheelspin
+    // Stamp subtle tire skidmarks onto the track on heavy braking, burnout, or mud/dirt wheelspin
+    if (
+      this.mode === 'PLAYING' &&
+      !s.crashed &&
+      (s.groundedR || s.groundedF) &&
+      (s.braking || s.burnoutCharge > 0.15 || (Math.abs(s.throttle) > 0.6 && s.surface !== 'asphalt' && Math.abs(s.spinR * v.wheelRadius - s.vx) > 3.5))
+    ) {
+      const wheelRefX = s.groundedR ? rearPos.x : frontPos.x;
+      if (Math.abs(wheelRefX - this.lastSkidX) >= 0.72) {
+        this.lastSkidX = wheelRefX;
+        const gY = sampleDriveHeight(wheelRefX, this.activeStage);
+        const gY2 = sampleDriveHeight(wheelRefX + 0.4, this.activeStage);
+        const slope = Math.atan2(gY2 - gY, 0.4);
+        _vec3.set(wheelRefX, gY + 0.035, 0);
+        _quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP.set(0, 0, 1), slope);
+        THREE.Object3D.DEFAULT_UP.set(0, 1, 0);
+        _scale.set(1, 1, 1);
+        _mat4.compose(_vec3, _quat, _scale);
+        this.skidMesh.setMatrixAt(this.skidCursor, _mat4);
+        this.skidMesh.instanceMatrix.needsUpdate = true;
+        this.skidCursor = (this.skidCursor + 1) % MAX_SKIDMARKS;
+      }
+    }
+
+    // Dynamic off-road dirt/mud overlay accumulation from distance traveled + wheelspin + mud bogs
     if (this.mode === 'PLAYING' && !s.crashed) {
       const dx = Math.max(0, s.x - this.lastDirtX);
       this.lastDirtX = s.x;
+      const mudMult = s.surface === 'mud' ? 3.2 : 1.0;
       const spinBoost =
-        (s.groundedR || s.groundedF) && Math.abs(s.throttle) > 0.3 ? dt * 0.01 : 0;
-      this.dirtLevel = Math.min(1, this.dirtLevel + dx * 0.0024 + spinBoost);
+        (s.groundedR || s.groundedF) && Math.abs(s.throttle) > 0.3 ? dt * 0.01 * mudMult : 0;
+      this.dirtLevel = Math.min(1, this.dirtLevel + dx * 0.0024 * mudMult + spinBoost);
     }
     const biomeDirtColor =
       this.activeStage.id === 'red_canyon'
@@ -1564,10 +2267,11 @@ export class WorldSceneController {
     rig.dirtMat.color.set(biomeDirtColor);
     rig.dirtMat.opacity = this.dirtLevel * 0.9;
 
-    // Ghost Rival Playback ONLY during PLAYING mode when enabled and valid track exists
+    // Ghost Rival Playback ONLY during PLAYING mode when rivalMode === 'ghost'
     if (this.ghostRig) {
       if (
         this.mode === 'PLAYING' &&
+        this.rivalMode === 'ghost' &&
         this.showGhost &&
         this.activeGhostTrack.length >= 2
       ) {
@@ -1584,13 +2288,33 @@ export class WorldSceneController {
       }
     }
 
-    // Crisp 2.5D Perspective Chase Camera with smooth speed & big-air zoom-out
+    // Live Autonomous AI Racer Rig during PLAYING mode when rivalMode === 'ai'
+    if (this.aiRig) {
+      if (this.mode === 'PLAYING' && this.rivalMode === 'ai' && this.aiPhysics) {
+        const as = this.aiPhysics.state;
+        this.aiRig.root.visible = true;
+        this.aiRig.root.position.set(as.x, as.y, -1.75);
+        this.aiRig.root.rotation.z = as.angle;
+        this.aiRig.wheelRear.rotation.z = -as.rotR;
+        this.aiRig.wheelFront.rotation.z = -as.rotF;
+      } else {
+        this.aiRig.root.visible = false;
+      }
+    }
+
+    // Dynamic 2.5D Perspective Chase Camera with CameraMode (chase / wide / bumper)
     const speed = forwardSpeed;
     const groundY = sampleDriveHeight(s.x, this.activeStage);
-    const heightAboveGround = Math.max(0, s.y - groundY - v.suspensionRest - v.wheelRadius);
-    const lookAheadX = THREE.MathUtils.clamp(s.vx * 0.34, -2.5, 8.2);
-    const targetCamX = s.x + 2.8 + lookAheadX;
-    const targetCamY = s.y + 1.15 + Math.min(2.6, speed * 0.045);
+    const wheelR = v.wheelRadius * s.tireRadiusScale;
+    const heightAboveGround = Math.max(0, s.y - groundY - s.effectiveSuspensionRest - wheelR);
+    const modeLeadBonus = this.cameraMode === 'wide' ? 1.25 : this.cameraMode === 'bumper' ? 0.65 : 1.0;
+    const lookAheadX = THREE.MathUtils.clamp(s.vx * 0.38 * modeLeadBonus, -2.5, 11.2);
+    const targetCamX = s.x + (this.cameraMode === 'bumper' ? 1.8 : 2.8) + lookAheadX;
+    const targetCamY =
+      s.y +
+      (this.cameraMode === 'bumper' ? 0.65 : 1.15) +
+      Math.min(2.8, speed * 0.042) -
+      Math.min(1.4, heightAboveGround * 0.16);
 
     this.camX = THREE.MathUtils.damp(this.camX, targetCamX, 6.8, dt);
     this.camY = THREE.MathUtils.damp(this.camY, targetCamY, 5.4, dt);
@@ -1598,8 +2322,8 @@ export class WorldSceneController {
     const targetOrthoScale =
       1.0 +
       (s.nitroActive ? 0.08 : 0) +
-      Math.min(0.28, speed * 0.0075) +
-      Math.min(0.24, heightAboveGround * 0.045);
+      Math.min(0.32, speed * 0.008) +
+      Math.min(0.34, heightAboveGround * 0.062);
     this.dynamicOrthoScale = THREE.MathUtils.damp(
       this.dynamicOrthoScale,
       targetOrthoScale,
@@ -1610,25 +2334,71 @@ export class WorldSceneController {
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
     const aspect = w / h;
-    const camZ = ((aspect < 1 ? 30.5 : 25.5) * this.dynamicOrthoScale) / this.camZoom;
+    const modeBaseZ =
+      this.cameraMode === 'wide'
+        ? aspect < 1
+          ? 38.0
+          : 32.5
+        : this.cameraMode === 'bumper'
+          ? aspect < 1
+            ? 20.5
+            : 16.5
+          : aspect < 1
+            ? 30.5
+            : 25.5;
+    const camZ = (modeBaseZ * this.dynamicOrthoScale) / this.camZoom;
 
     const shakeX = (Math.random() - 0.5) * s.shakeIntensity * 0.75 * this.shakeScale;
     const shakeY = (Math.random() - 0.5) * s.shakeIntensity * 0.75 * this.shakeScale;
 
-    this.camera.position.set(this.camX + shakeX, this.camY + 1.65 + shakeY, camZ);
-    this.camera.lookAt(this.camX + 1.4 + shakeX, this.camY - 0.15 + shakeY, 0);
+    this.camera.position.set(
+      this.camX + shakeX,
+      this.camY + (this.cameraMode === 'bumper' ? 0.95 : 1.65) + shakeY,
+      camZ,
+    );
+    this.camera.lookAt(
+      this.camX + (this.cameraMode === 'bumper' ? 2.1 : 1.4) + shakeX,
+      this.camY - 0.15 + shakeY,
+      0,
+    );
 
-    // Keep contact shadow anchored to terrain directly below vehicle chassis
-    this.contactShadowMesh.visible = true;
-    this.contactShadowMesh.position.set(s.x, groundY + 0.05, 0);
-    const shadowFade = Math.max(0.08, 0.56 - heightAboveGround * 0.14);
-    (this.contactShadowMesh.material as THREE.MeshBasicMaterial).opacity = shadowFade;
+    // Anchor soft per-tire contact shadows & chassis AO directly onto terrain below wheels
+    const gR = sampleDriveHeight(rearPos.x, this.activeStage);
+    const gF = sampleDriveHeight(frontPos.x, this.activeStage);
+    const hR = Math.max(0, rearPos.y - wheelR - gR);
+    const hF = Math.max(0, frontPos.y - wheelR - gF);
+    const slopeAnglePlay = Math.atan2(gF - gR, Math.max(0.5, frontPos.x - rearPos.x));
+
+    const alphaR = Math.max(0, 0.72 - hR * 0.28);
+    rig.tireShadowRear.visible = alphaR > 0.03;
+    rig.tireShadowRear.position.set(rearPos.x, gR + 0.035, 0);
+    rig.tireShadowRear.rotation.z = slopeAnglePlay;
+    rig.tireShadowRear.scale.setScalar(1 + Math.min(0.5, hR * 0.18));
+    (rig.tireShadowRear.material as THREE.MeshBasicMaterial).opacity = alphaR;
+
+    const alphaF = Math.max(0, 0.72 - hF * 0.28);
+    rig.tireShadowFront.visible = alphaF > 0.03;
+    rig.tireShadowFront.position.set(frontPos.x, gF + 0.035, 0);
+    rig.tireShadowFront.rotation.z = slopeAnglePlay;
+    rig.tireShadowFront.scale.setScalar(1 + Math.min(0.5, hF * 0.18));
+    (rig.tireShadowFront.material as THREE.MeshBasicMaterial).opacity = alphaF;
+
+    const alphaAo = Math.max(0, 0.52 - heightAboveGround * 0.18);
+    rig.chassisAoShadow.visible = alphaAo > 0.03;
+    rig.chassisAoShadow.position.set(s.x, groundY + 0.04, 0);
+    rig.chassisAoShadow.rotation.z = slopeAnglePlay;
+    rig.chassisAoShadow.scale.setScalar(1 + Math.min(0.4, heightAboveGround * 0.12));
+    (rig.chassisAoShadow.material as THREE.MeshBasicMaterial).opacity = alphaAo;
 
     if (rig.neonPoolMesh) {
-      rig.neonPoolMesh.visible = true;
-      rig.neonPoolMesh.position.set(s.x, groundY + 0.08, 0);
-      const neonAlpha = Math.max(0.05, 0.85 - heightAboveGround * 0.22);
+      const neonAlpha = this.activeNeonId !== 'off' ? Math.max(0, 0.36 - heightAboveGround * 0.14) : 0;
+      rig.neonPoolMesh.visible = neonAlpha > 0.02;
+      rig.neonPoolMesh.position.set(s.x, groundY + 0.045, 0);
+      rig.neonPoolMesh.rotation.z = slopeAnglePlay;
       (rig.neonPoolMesh.material as THREE.MeshBasicMaterial).opacity = neonAlpha;
+    }
+    if (rig.neonLight) {
+      rig.neonLight.intensity = this.activeNeonId !== 'off' ? Math.max(0, 4.2 - heightAboveGround * 1.4) : 0;
     }
 
     this.sunLight.position.set(s.x + 14, s.y + 26, 16);
@@ -1637,10 +2407,10 @@ export class WorldSceneController {
 
   private updateShocksAndArms(rig: VehicleRig3D, lenR: number, lenF: number): void {
     const wb = this.activeVehicle.wheelbase;
-    rig.shockRear.position.set(-wb * 0.5, -lenR, rig.shockRear.position.z);
-    rig.shockRear.scale.y = Math.max(0.25, lenR + 0.18);
-    rig.shockFront.position.set(wb * 0.5, -lenF, rig.shockFront.position.z);
-    rig.shockFront.scale.y = Math.max(0.25, lenF + 0.18);
+    rig.shockRear.group.position.set(-wb * 0.5, -lenR * 0.5, rig.shockRear.group.position.z);
+    rig.shockRear.setCompression(Math.max(0.22, lenR + 0.14));
+    rig.shockFront.group.position.set(wb * 0.5, -lenF * 0.5, rig.shockFront.group.position.z);
+    rig.shockFront.setCompression(Math.max(0.22, lenF + 0.14));
 
     // Pivot control arms smoothly toward wheel centers
     const armSpan = Math.max(0.4, wb * 0.44);
@@ -1658,6 +2428,14 @@ export class WorldSceneController {
     const cliffUv = this.cliffGeo.attributes.uv as THREE.BufferAttribute;
     const cliffCol = this.cliffGeo.attributes.color as THREE.BufferAttribute;
 
+    const lipPos = this.lipGeo.attributes.position as THREE.BufferAttribute;
+    const lipUv = this.lipGeo.attributes.uv as THREE.BufferAttribute;
+    const lipCol = this.lipGeo.attributes.color as THREE.BufferAttribute;
+    _color.set(this.activeStage.topSurfaceColor);
+    const lipR = _color.r * 0.92;
+    const lipG = _color.g * 0.92;
+    const lipB = _color.b * 0.92;
+
     for (let i = 0; i <= TERRAIN_SEGMENTS; i++) {
       const x = startX + i * TERRAIN_STEP_X;
       const gy = sampleBaseGroundHeight(x, this.activeStage);
@@ -1674,6 +2452,12 @@ export class WorldSceneController {
       if (surf.surface === 'ice') {
         roadCol.setXYZ(v0, 0.52, 0.86, 1.0);
         roadCol.setXYZ(v1, 0.58, 0.9, 1.0);
+      } else if (surf.surface === 'mud') {
+        roadCol.setXYZ(v0, 0.44 * strataVar, 0.28 * strataVar, 0.16 * strataVar);
+        roadCol.setXYZ(v1, 0.4 * strataVar, 0.24 * strataVar, 0.14 * strataVar);
+      } else if (surf.surface === 'sand') {
+        roadCol.setXYZ(v0, 1.0 * strataVar, 0.85 * strataVar, 0.56 * strataVar);
+        roadCol.setXYZ(v1, 0.95 * strataVar, 0.8 * strataVar, 0.52 * strataVar);
       } else {
         roadCol.setXYZ(v0, strataVar, strataVar, strataVar);
         roadCol.setXYZ(v1, 0.95 * strataVar, 0.94 * strataVar, 0.93 * strataVar);
@@ -1685,6 +2469,22 @@ export class WorldSceneController {
       cliffUv.setXY(v1, x * 0.09, 1);
       cliffCol.setXYZ(v0, strataVar, strataVar, strataVar);
       cliffCol.setXYZ(v1, 0.54, 0.54, 0.54);
+
+      const lipWave = 0.24 + Math.sin(x * 1.4) * 0.06 + Math.cos(x * 3.1) * 0.04;
+      lipPos.setXYZ(v0, x, gy + 0.03, 4.84);
+      lipPos.setXYZ(v1, x, gy - lipWave, 4.84);
+      lipUv.setXY(v0, x * 0.25, 0);
+      lipUv.setXY(v1, x * 0.25, 1);
+      if (surf.surface === 'mud') {
+        lipCol.setXYZ(v0, 0.36, 0.22, 0.12);
+        lipCol.setXYZ(v1, 0.24, 0.14, 0.08);
+      } else if (surf.surface === 'sand') {
+        lipCol.setXYZ(v0, 0.92, 0.78, 0.5);
+        lipCol.setXYZ(v1, 0.72, 0.58, 0.36);
+      } else {
+        lipCol.setXYZ(v0, lipR, lipG, lipB);
+        lipCol.setXYZ(v1, lipR * 0.62, lipG * 0.62, lipB * 0.62);
+      }
     }
 
     roadPos.needsUpdate = true;
@@ -1697,10 +2497,26 @@ export class WorldSceneController {
     cliffCol.needsUpdate = true;
     this.cliffGeo.computeVertexNormals();
 
+    lipPos.needsUpdate = true;
+    lipUv.needsUpdate = true;
+    lipCol.needsUpdate = true;
+    this.lipGeo.computeVertexNormals();
+
     if (this.gorgeWaterMesh.visible) {
       this.gorgeWaterMesh.position.x = this.camX;
       this.gorgeWaterMesh.position.y =
         sampleBaseGroundHeight(this.camX, this.activeStage) - 9.5;
+    }
+
+    if (this.viceHorizonGroup.visible) {
+      this.viceHorizonGroup.position.set(this.camX * 0.78, this.camY * 0.35 - 2.2, 0);
+    }
+    if (this.countrysideBackdropGroup.visible) {
+      this.countrysideBackdropGroup.position.set(this.camX * 0.72, this.camY * 0.38 - 1.5, 0);
+      this.countrysideBackdropGroup.children.forEach((tower, idx) => {
+        const hub = tower.getObjectByName(`turbineHub_${idx}`);
+        if (hub) hub.rotation.z = this.elapsed * (0.85 + idx * 0.12);
+      });
     }
 
     const updateRidge = (geo: THREE.BufferGeometry, parallax: number, baseY: number, scaleY: number, freq: number) => {
@@ -1778,66 +2594,79 @@ export class WorldSceneController {
 
   private populateTitleRocks(): void {
     this.clearGroupChildren(this.titleRockGroup);
+    this.turntableDisc = null;
     const heroX = START_X + 62;
-    const baseColor =
-      this.activeStage.id === 'red_canyon'
-        ? '#8c3b23'
-        : this.activeStage.id === 'frost_peaks'
-          ? '#64748b'
-          : this.activeStage.id === 'moon'
-            ? '#64687a'
-            : this.activeStage.id === 'vice_coast'
-              ? '#5b534b'
-              : '#7b4328';
-    const highlightColor =
-      this.activeStage.id === 'red_canyon'
-        ? '#ad4e2f'
-        : this.activeStage.id === 'frost_peaks'
-          ? '#94a3b8'
-          : this.activeStage.id === 'moon'
-            ? '#7c8296'
-            : this.activeStage.id === 'vice_coast'
-              ? '#78716c'
-              : '#9a5433';
-    const scrubColor =
-      this.activeStage.id === 'frost_peaks'
-        ? '#94a3b8'
-        : this.activeStage.id === 'vice_coast'
-          ? '#3f7d44'
-          : '#7d8042';
+    const groundAtHero = sampleDriveHeight(heroX, this.activeStage);
+    const platformTopY = groundAtHero + 0.55;
 
-    const placements = [
-      // Foreground crawl boulder directly next to rear/mid rock shelf (clear of right title area)
-      { dx: -1.1, dz: 1.55, r: 0.72, sy: 0.56, col: baseColor, seed: 11 },
-      { dx: 1.9, dz: 1.85, r: 0.58, sy: 0.52, col: highlightColor, seed: 19 },
-      // Mid-right rugged sandstone shelves framing the climb path
-      { dx: 4.8, dz: -2.4, r: 2.3, sy: 0.54, col: highlightColor, seed: 23 },
-      { dx: 7.4, dz: -4.2, r: 2.7, sy: 0.62, col: baseColor, seed: 31 },
-      { dx: -4.2, dz: -3.2, r: 1.9, sy: 0.58, col: baseColor, seed: 37 },
-      { dx: 2.2, dz: -2.6, r: 1.45, sy: 0.52, col: highlightColor, seed: 43 },
-    ];
-    placements.forEach((p) => {
-      const rx = heroX + p.dx;
-      const ry = sampleBaseGroundHeight(rx, this.activeStage);
-      const rock = this.createCraggyRockMesh(p.r, p.col, p.seed, p.sy);
-      rock.position.set(rx, ry + p.r * p.sy * 0.28, p.dz);
-      rock.rotation.y = hash01(p.seed) * Math.PI * 2;
-      this.titleRockGroup.add(rock);
+    // Level Grey Circular Showroom Turntable Board + Heavy Pedestal Base
+    const pedestalMat = new THREE.MeshStandardMaterial({
+      color: '#1e293b',
+      roughness: 0.78,
+      metalness: 0.35,
     });
+    const basePlinth = new THREE.Mesh(
+      new THREE.CylinderGeometry(3.45, 3.85, 1.8, 48),
+      pedestalMat,
+    );
+    basePlinth.position.set(heroX, platformTopY - 1.08, 0);
+    basePlinth.receiveShadow = true;
+    this.titleRockGroup.add(basePlinth);
 
-    if (this.activeStage.id !== 'moon') {
-      [
-        { dx: 2.6, dz: -1.35, s: 1 },
-        { dx: 3.1, dz: -1.7, s: 4 },
-        { dx: -2.4, dz: -1.4, s: 9 },
-      ].forEach((g) => {
-        const gx = heroX + g.dx;
-        const gy = sampleBaseGroundHeight(gx, this.activeStage);
-        const tuft = this.createScrubGrassTuft(scrubColor, g.s);
-        tuft.position.set(gx, gy - 0.04, g.dz);
-        this.titleRockGroup.add(tuft);
-      });
+    const discGroup = new THREE.Group();
+    discGroup.position.set(heroX, platformTopY, 0);
+
+    const topPlate = new THREE.Mesh(
+      new THREE.CylinderGeometry(3.35, 3.45, 0.22, 48),
+      new THREE.MeshStandardMaterial({
+        color: '#64748b',
+        roughness: 0.62,
+        metalness: 0.24,
+      }),
+    );
+    topPlate.position.y = -0.11;
+    topPlate.receiveShadow = true;
+    discGroup.add(topPlate);
+
+    const innerPad = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.95, 2.95, 0.03, 48),
+      new THREE.MeshStandardMaterial({
+        color: '#475569',
+        roughness: 0.74,
+        metalness: 0.18,
+      }),
+    );
+    innerPad.position.y = 0.005;
+    innerPad.receiveShadow = true;
+    discGroup.add(innerPad);
+
+    const bevelRing = new THREE.Mesh(
+      new THREE.TorusGeometry(3.36, 0.06, 10, 48),
+      new THREE.MeshStandardMaterial({
+        color: '#cbd5e1',
+        roughness: 0.35,
+        metalness: 0.75,
+      }),
+    );
+    bevelRing.rotation.x = Math.PI / 2;
+    bevelRing.position.y = 0.0;
+    discGroup.add(bevelRing);
+
+    const tickMat = new THREE.MeshStandardMaterial({
+      color: '#e2e8f0',
+      roughness: 0.5,
+      metalness: 0.3,
+    });
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * Math.PI * 2;
+      const tick = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.025, 0.05), tickMat);
+      tick.position.set(Math.cos(ang) * 3.12, 0.015, Math.sin(ang) * 3.12);
+      tick.rotation.y = -ang;
+      discGroup.add(tick);
     }
+
+    this.turntableDisc = discGroup;
+    this.titleRockGroup.add(discGroup);
   }
 
   private clearGroupChildren(grp: THREE.Group): void {
@@ -1907,7 +2736,7 @@ export class WorldSceneController {
       this.tunnelPool.forEach((t) => (t.visible = false));
     }
 
-    // Midground Scenic Props
+    // Midground Scenic Props (strictly z <= -2.4 behind track plane)
     const propSpacing = 11.5;
     const slotStart = Math.floor(minX / propSpacing);
     const slotEnd = Math.ceil(maxX / propSpacing);
@@ -1919,23 +2748,24 @@ export class WorldSceneController {
         grp.visible = false;
         continue;
       }
+      const isPoleSlot = this.activeStage.id === 'countryside' && slot % 3 === 0;
+      const px = isPoleSlot ? slot * propSpacing : slot * propSpacing + hash01(slot * 7 + 3) * 6;
+      const br = getBridgeInfo(px, this.activeStage);
       if (this.propSlots[i] !== slot) {
         this.propSlots[i] = slot;
-        this.populateProp(grp, slot);
+        this.populateProp(grp, slot, propSpacing);
       }
-      const px = slot * propSpacing + hash01(slot * 7 + 3) * 6;
-      const br = getBridgeInfo(px, this.activeStage);
-      if (br.active || hash01(slot * 11 + 5) < 0.22) {
+      if (br.active || (!isPoleSlot && hash01(slot * 11 + 5) < 0.22)) {
         grp.visible = false;
       } else {
         grp.visible = true;
         const py = sampleBaseGroundHeight(px, this.activeStage);
-        const pz = -3.8 - hash01(slot * 17 + 19) * 5.2;
+        const pz = isPoleSlot ? -3.4 : -3.4 - hash01(slot * 17 + 19) * 5.2;
         grp.position.set(px, py - 0.05, pz);
       }
     }
 
-    // Foreground Parallax Props kept low (py - 0.55) so orthographic side-view never occludes tires/chassis
+    // Foreground Parallax Props kept low (py - 0.55) so side-view never occludes tires/chassis
     const fgSpacing = 18;
     const fgStart = Math.floor((this.camX - 36) / fgSpacing);
     for (let i = 0; i < FG_POOL_SIZE; i++) {
@@ -1953,8 +2783,42 @@ export class WorldSceneController {
         grp.visible = true;
         const py = sampleBaseGroundHeight(px, this.activeStage);
         grp.scale.setScalar(0.75);
-        grp.position.set(px, py - 0.58, 4.9 + hash01(slot * 13) * 2.2);
+        grp.position.set(px, py - 0.58, 5.1 + hash01(slot * 13) * 2.1);
       }
+    }
+
+    // 3D Personal Best Finish Banner
+    if (this.mode === 'PLAYING' && this.stageBestMeters >= 25) {
+      const bx = START_X + this.stageBestMeters;
+      const br = getBridgeInfo(bx, this.activeStage);
+      if (!br.active && bx >= minX - 8 && bx <= maxX + 8) {
+        this.finishBannerGroup.visible = true;
+        this.finishBannerGroup.position.set(bx, sampleBaseGroundHeight(bx, this.activeStage), 0);
+      } else {
+        this.finishBannerGroup.visible = false;
+      }
+    } else {
+      this.finishBannerGroup.visible = false;
+    }
+
+    // CLIMB START Gate at START_X & SUMMIT FINISH Gate at getSummitX(stage)
+    if (this.mode === 'PLAYING') {
+      if (START_X >= minX - 10 && START_X <= maxX + 10) {
+        this.startGateGroup.visible = true;
+        this.startGateGroup.position.set(START_X, sampleBaseGroundHeight(START_X, this.activeStage), 0);
+      } else {
+        this.startGateGroup.visible = false;
+      }
+      const summitX = getSummitX(this.activeStage);
+      if (summitX >= minX - 12 && summitX <= maxX + 16) {
+        this.summitGateGroup.visible = true;
+        this.summitGateGroup.position.set(summitX, sampleBaseGroundHeight(summitX, this.activeStage), 0);
+      } else {
+        this.summitGateGroup.visible = false;
+      }
+    } else {
+      this.startGateGroup.visible = false;
+      this.summitGateGroup.visible = false;
     }
 
     // Trail Milestone Signs every 100m (100m, 200m, 300m...)
@@ -1977,7 +2841,7 @@ export class WorldSceneController {
         this.populateSignpost(grp, `${mIdx * 100}m`);
       }
       grp.visible = true;
-      grp.position.set(sx, sampleBaseGroundHeight(sx, this.activeStage), -3.2);
+      grp.position.set(sx, sampleBaseGroundHeight(sx, this.activeStage), -2.8);
     }
   }
 
@@ -2000,15 +2864,15 @@ export class WorldSceneController {
       new THREE.CylinderGeometry(0.08, 0.1, 2.3, 8),
       new THREE.MeshStandardMaterial({ color: '#5c3a21', roughness: 0.9 }),
     );
-    post.position.y = 1.15;
+    post.position.set(0, 1.15, -0.09);
     post.castShadow = true;
     grp.add(post);
 
     const board = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 0.72, 0.08),
+      new THREE.BoxGeometry(1.45, 0.74, 0.08),
       new THREE.MeshStandardMaterial({ map: tex, roughness: 0.45 }),
     );
-    board.position.y = 2.15;
+    board.position.set(0, 2.15, 0.06);
     board.castShadow = true;
     grp.add(board);
   }
@@ -2079,11 +2943,12 @@ export class WorldSceneController {
     }
   }
 
-  private populateProp(grp: THREE.Group, slot: number): void {
+  private populateProp(grp: THREE.Group, slot: number, propSpacing = 11.5): void {
     this.clearGroupChildren(grp);
-    const sc = 0.85 + hash01(slot * 23) * 0.5;
-    grp.scale.setScalar(sc);
     const id = this.activeStage.id;
+    const isPoleSlot = id === 'countryside' && slot % 3 === 0;
+    const sc = isPoleSlot ? 1.0 : 0.85 + hash01(slot * 23) * 0.5;
+    grp.scale.setScalar(sc);
 
     if (id === 'countryside' || id === 'frost_peaks') {
       // Occasional Countryside Barn / Shed Landmark
@@ -2104,21 +2969,41 @@ export class WorldSceneController {
         return;
       }
 
-      // Countryside Wooden Utility Pole & Sagging Power Wire
-      if (id === 'countryside' && Math.abs(slot) % 5 === 2) {
+      // Countryside Wooden Utility Pole with Continuous Catenary Lines Spanning Adjacent Poles
+      if (isPoleSlot) {
         const poleMat = new THREE.MeshStandardMaterial({ color: '#5c3c22', roughness: 0.92 });
+        const insulatorMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.35, metalness: 0.3 });
         const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 5.2, 8), poleMat);
         pole.position.y = 2.6;
         pole.castShadow = true;
         const cross = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 1.4), poleMat);
         cross.position.y = 4.9;
-        const wire = new THREE.Mesh(
-          new THREE.BoxGeometry(11.5, 0.03, 0.03),
-          new THREE.MeshBasicMaterial({ color: '#1e293b' }),
-        );
-        wire.position.set(5.75, 4.7, 0.55);
-        wire.rotation.z = -0.04;
-        grp.add(pole, cross, wire);
+        grp.add(pole, cross);
+
+        [-0.56, 0.56].forEach((iz) => {
+          const ins = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.16, 6), insulatorMat);
+          ins.position.set(0, 5.02, iz);
+          grp.add(ins);
+        });
+
+        const curX = slot * propSpacing;
+        const nextX = (slot + 3) * propSpacing;
+        const nextBridge = getBridgeInfo(nextX, this.activeStage);
+        if (!nextBridge.active) {
+          const dy = sampleBaseGroundHeight(nextX, this.activeStage) - sampleBaseGroundHeight(curX, this.activeStage);
+          const spanDx = 3 * propSpacing;
+          const wireMat = new THREE.MeshBasicMaterial({ color: '#1e293b' });
+          [-0.56, 0.56].forEach((wz) => {
+            const sagY = 5.05 + dy * 0.5 - 1.15;
+            const curve = new THREE.CatmullRomCurve3([
+              new THREE.Vector3(0, 5.05, wz),
+              new THREE.Vector3(spanDx * 0.5, sagY, wz),
+              new THREE.Vector3(spanDx, 5.05 + dy, wz),
+            ]);
+            const wireGeo = new THREE.TubeGeometry(curve, 14, 0.02, 5, false);
+            grp.add(new THREE.Mesh(wireGeo, wireMat));
+          });
+        }
         return;
       }
 
@@ -2476,6 +3361,20 @@ export class WorldSceneController {
       }
       this.ambientSnowMesh.geometry.attributes.position.needsUpdate = true;
     }
+
+    if (this.rainMesh.visible) {
+      this.rainMesh.position.set(this.camX, this.camY, 0);
+      const isStorm = this.activeClimbSetup.weather === 'storm';
+      const fallVy = isStorm ? 28 : 19;
+      const slantVx = isStorm ? 6.5 : 2.2;
+      for (let i = 0; i < this.rainPos.length; i += 3) {
+        this.rainPos[i] -= slantVx * dt;
+        this.rainPos[i + 1] -= fallVy * dt;
+        if (this.rainPos[i + 1] < -16) this.rainPos[i + 1] = 18;
+        if (this.rainPos[i] < -28) this.rainPos[i] = 28;
+      }
+      this.rainMesh.geometry.attributes.position.needsUpdate = true;
+    }
   }
 
   public dispose(): void {
@@ -2484,22 +3383,35 @@ export class WorldSceneController {
     clearTimeout(this.frameId);
     this.resizeObserver.disconnect();
     this.clearGroupChildren(this.titleRockGroup);
+    this.clearGroupChildren(this.viceHorizonGroup);
+    this.clearGroupChildren(this.countrysideBackdropGroup);
+    this.clearGroupChildren(this.finishBannerGroup);
+    this.clearGroupChildren(this.startGateGroup);
+    this.clearGroupChildren(this.summitGateGroup);
     this.propPool.forEach((g) => this.clearGroupChildren(g));
     this.fgPool.forEach((g) => this.clearGroupChildren(g));
     this.vehicleRig?.dispose();
     this.ghostRig?.dispose();
+    this.aiRig?.dispose();
     this.roadTex?.dispose();
     this.strataTex?.dispose();
     this.terrainBumpTex.dispose();
     this.woodTex.dispose();
     this.earthTex.dispose();
     this.glowTex.dispose();
-    this.contactShadowMesh.geometry.dispose();
-    (this.contactShadowMesh.material as THREE.Material).dispose();
+    this.ambientSnowMesh.geometry.dispose();
+    (this.ambientSnowMesh.material as THREE.Material).dispose();
+    this.rainMesh.geometry.dispose();
+    (this.rainMesh.material as THREE.Material).dispose();
+    this.skidMesh.geometry.dispose();
+    (this.skidMesh.material as THREE.Material).dispose();
+    this.particleMesh.geometry.dispose();
+    (this.particleMesh.material as THREE.Material).dispose();
     this.signTexCache.forEach((t) => t.dispose());
     this.signTexCache.clear();
     this.roadGeo.dispose();
     this.cliffGeo.dispose();
+    this.lipGeo.dispose();
     this.farRidgeGeo.dispose();
     this.midRidgeGeo.dispose();
     this.renderer.dispose();

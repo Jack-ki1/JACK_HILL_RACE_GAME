@@ -9,6 +9,7 @@ import {
   GraphicsQuality,
   LiveryId,
   NeonColorId,
+  UpgradeLevels,
   VehicleAccessoryId,
   VehicleId,
   WheelStyleId,
@@ -42,6 +43,9 @@ export class GarageSceneController {
   private dropVelocity = 0;
   private dropOffset = 0;
   private headlightsOn = true;
+  private currentRideHeight = 0;
+  private currentSuspBonus = 0;
+  private currentTireBonus = 1;
 
   private camPreset: GarageCameraPreset = 'profile';
   private camPos = new THREE.Vector3(0, 1.35, 6.2);
@@ -320,6 +324,8 @@ export class GarageSceneController {
     accessories: VehicleAccessoryId[] = ['lightbar'],
     neonColorId: NeonColorId = 'off',
     liveryId: LiveryId = 'clean',
+    upgrades?: UpgradeLevels,
+    rideHeight = 0,
   ): void {
     const vehicle = VEHICLES.find((v) => v.id === vehicleId) ?? VEHICLES[0];
     this.activeVehicleDef = vehicle;
@@ -335,6 +341,12 @@ export class GarageSceneController {
       this.vehicleRig.dispose();
     }
 
+    const upSusp = upgrades?.suspension ?? 1;
+    const upTires = upgrades?.tires ?? 1;
+    this.currentRideHeight = rideHeight;
+    this.currentSuspBonus = Math.min(0.14, Math.max(0, upSusp - 1) * 0.014);
+    this.currentTireBonus = 1 + Math.min(0.085, Math.max(0, upTires - 1) * 0.009);
+
     this.vehicleRig = buildVehicle3D(
       vehicle,
       paint,
@@ -344,28 +356,40 @@ export class GarageSceneController {
       neonColorId,
       liveryId,
       this.maxAniso,
+      upgrades,
     );
     this.vehicleRig.headlightCones.forEach((c) => (c.visible = this.headlightsOn));
 
-    const wheelY = 0.22 + vehicle.wheelRadius;
-    const bodyY = wheelY + vehicle.suspensionRest * 0.72;
+    const wheelY = 0.22 + vehicle.wheelRadius * this.currentTireBonus;
+    const restComp = Math.max(
+      0.26,
+      vehicle.suspensionRest * 0.72 + this.currentSuspBonus + this.currentRideHeight,
+    );
+    const bodyY = wheelY + restComp;
     this.vehicleRig.chassisGroup.position.set(0, bodyY, 0);
     this.vehicleRig.wheelRearGroup.position.set(-vehicle.wheelbase * 0.5, wheelY, 0);
     this.vehicleRig.wheelFrontGroup.position.set(vehicle.wheelbase * 0.5, wheelY, 0);
 
-    const shockLen = vehicle.suspensionRest * 0.72 + 0.18;
-    this.vehicleRig.shockRear.position.set(
+    this.vehicleRig.tireShadowRear.position.set(-vehicle.wheelbase * 0.5, 0.229, 0);
+    this.vehicleRig.tireShadowFront.position.set(vehicle.wheelbase * 0.5, 0.229, 0);
+    this.vehicleRig.chassisAoShadow.position.set(0, 0.228, 0);
+    if (this.vehicleRig.neonPoolMesh) {
+      this.vehicleRig.neonPoolMesh.position.set(0, 0.231, 0);
+    }
+
+    const shockLen = restComp + 0.18;
+    this.vehicleRig.shockRear.group.position.set(
       -vehicle.wheelbase * 0.5,
-      -vehicle.suspensionRest * 0.72,
-      this.vehicleRig.shockRear.position.z,
+      -restComp,
+      this.vehicleRig.shockRear.group.position.z,
     );
-    this.vehicleRig.shockRear.scale.y = shockLen;
-    this.vehicleRig.shockFront.position.set(
+    this.vehicleRig.shockRear.setCompression(shockLen);
+    this.vehicleRig.shockFront.group.position.set(
       vehicle.wheelbase * 0.5,
-      -vehicle.suspensionRest * 0.72,
-      this.vehicleRig.shockFront.position.z,
+      -restComp,
+      this.vehicleRig.shockFront.group.position.z,
     );
-    this.vehicleRig.shockFront.scale.y = shockLen;
+    this.vehicleRig.shockFront.setCompression(shockLen);
 
     this.turntable.add(this.vehicleRig.root);
 
@@ -431,25 +455,31 @@ export class GarageSceneController {
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camLook);
 
-    // Suspension bounce physics compressing chassis & shocks independently while wheels sit on deck
+    // Suspension bounce physics compressing chassis & telescoping coilovers independently while wheels sit on deck
     if (this.vehicleRig) {
       const springForce = -this.dropOffset * 95 - this.dropVelocity * 11;
       this.dropVelocity += springForce * dt;
       this.dropOffset += this.dropVelocity * dt;
 
       const v = this.activeVehicleDef;
-      const wheelY = 0.22 + v.wheelRadius;
-      const comp = Math.max(0.18, v.suspensionRest * 0.72 - this.dropOffset);
+      const wheelY = 0.22 + v.wheelRadius * this.currentTireBonus;
+      const restComp = v.suspensionRest * 0.72 + this.currentSuspBonus + this.currentRideHeight;
+      const comp = Math.max(0.18, restComp - this.dropOffset);
       this.vehicleRig.chassisGroup.position.y = wheelY + comp;
+      this.vehicleRig.chassisGroup.rotation.z = this.dropVelocity * 0.015;
 
       const shockLen = comp + 0.18;
-      this.vehicleRig.shockRear.position.y = -comp;
-      this.vehicleRig.shockRear.scale.y = shockLen;
-      this.vehicleRig.shockFront.position.y = -comp;
-      this.vehicleRig.shockFront.scale.y = shockLen;
+      this.vehicleRig.shockRear.group.position.y = -comp;
+      this.vehicleRig.shockRear.setCompression(shockLen);
+      this.vehicleRig.shockFront.group.position.y = -comp;
+      this.vehicleRig.shockFront.setCompression(shockLen);
 
+      if (this.vehicleRig.whipMastGroup) {
+        this.vehicleRig.whipMastGroup.rotation.z =
+          0.08 + Math.sin(now * 0.004) * 0.05 - this.dropVelocity * 0.08;
+      }
       if (this.vehicleRig.whipFlag) {
-        this.vehicleRig.whipFlag.rotation.y = Math.sin(now * 0.006) * 0.22;
+        this.vehicleRig.whipFlag.rotation.y = Math.sin(now * 0.006) * 0.24;
       }
     }
 

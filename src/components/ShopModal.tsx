@@ -292,7 +292,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
             {[
               { title: 'COINS STASH', coins: 2500, gems: 10 },
               { title: 'PROSPECTOR BAG', coins: 7500, gems: 25 },
-              { title: 'JACK_HILL_GAME VAULT', coins: 20000, gems: 60 },
+              { title: 'JACK HILL CRAWL VAULT', coins: 20000, gems: 60 },
             ].map((pack) => (
               <div
                 key={pack.title}

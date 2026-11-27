@@ -159,7 +159,7 @@ export const MissionsModal: React.FC<MissionsModalProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <div className="text-xs font-bold tracking-widest text-violet-300 uppercase">
-                    CUMULATIVE JACK_HILL_GAME DISTANCE
+                    CUMULATIVE JACK HILL CRAWL DISTANCE
                   </div>
                   <div className="font-mono-num text-2xl font-black text-white">
                     {Math.floor(save.totals.distanceMeters).toLocaleString()}m

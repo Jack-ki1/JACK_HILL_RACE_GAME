@@ -224,7 +224,7 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({
               {viewMode === 'STAGES' ? 'STAGE SELECT' : 'WORLD MAP'}
             </h1>
             <p className="text-xs font-bold tracking-widest text-sky-300 uppercase">
-              JACK_HILL_GAME · {STAGES.length} BIOMES
+              JACK HILL CRAWL · {STAGES.length} BIOMES
             </p>
           </div>
         </div>
@@ -420,8 +420,8 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({
           </div>
         </div>
       ) : (
-        /* Interactive Panoramic Terrain Map */
-        <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/15 bg-slate-900 shadow-2xl">
+        /* Interactive Topographic & Satellite Vector World Map */
+        <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/15 bg-slate-950 shadow-2xl">
           <svg
             viewBox="0 0 1200 540"
             preserveAspectRatio="xMidYMid slice"
@@ -429,114 +429,285 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({
             aria-hidden="true"
           >
             <defs>
-              <linearGradient id="mapOcean" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#163856" />
-                <stop offset="55%" stopColor="#1d2b44" />
-                <stop offset="100%" stopColor="#090d1f" />
+              <radialGradient id="mapOcean" cx="45%" cy="48%" r="72%">
+                <stop offset="0%" stopColor="#0f3458" />
+                <stop offset="55%" stopColor="#0b223d" />
+                <stop offset="100%" stopColor="#050b18" />
+              </radialGradient>
+              <linearGradient id="coastalShelf" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#1e6b8a" stopOpacity="0.45" />
+                <stop offset="100%" stopColor="#0f3e63" stopOpacity="0.15" />
               </linearGradient>
-              <linearGradient id="greenLand" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#4da844" />
-                <stop offset="100%" stopColor="#265b27" />
+              <linearGradient id="greenLand" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#5ec250" />
+                <stop offset="60%" stopColor="#358536" />
+                <stop offset="100%" stopColor="#1f5126" />
               </linearGradient>
-              <linearGradient id="canyonLand" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#d9773f" />
-                <stop offset="100%" stopColor="#7a2a19" />
+              <linearGradient id="canyonLand" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ea8b49" />
+                <stop offset="60%" stopColor="#b84b29" />
+                <stop offset="100%" stopColor="#6c2214" />
               </linearGradient>
-              <linearGradient id="frostLand" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#dbeafe" />
-                <stop offset="100%" stopColor="#3b638f" />
+              <linearGradient id="frostLand" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#f1f5f9" />
+                <stop offset="55%" stopColor="#93c5fd" />
+                <stop offset="100%" stopColor="#335b87" />
               </linearGradient>
-              <radialGradient id="moonLand" cx="50%" cy="50%" r="55%">
-                <stop offset="0%" stopColor="#9ca3af" />
-                <stop offset="100%" stopColor="#374151" />
+              <radialGradient id="moonLand" cx="38%" cy="34%" r="62%">
+                <stop offset="0%" stopColor="#d1d5db" />
+                <stop offset="60%" stopColor="#6b7280" />
+                <stop offset="100%" stopColor="#1f2937" />
               </radialGradient>
               <linearGradient id="viceLand" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ff5ea8" />
-                <stop offset="55%" stopColor="#fb923c" />
-                <stop offset="100%" stopColor="#2e1065" />
+                <stop offset="0%" stopColor="#fb7185" />
+                <stop offset="48%" stopColor="#f59e0b" />
+                <stop offset="100%" stopColor="#3b0764" />
               </linearGradient>
             </defs>
 
             <rect width="1200" height="540" fill="url(#mapOcean)" />
 
-            <g stroke="#38bdf8" strokeOpacity="0.08" strokeWidth="1.2" fill="none">
-              <path d="M0 120 Q300 90 600 135 T1200 110" />
-              <path d="M0 240 Q320 205 640 250 T1200 225" />
-              <path d="M0 360 Q280 330 620 375 T1200 350" />
-              <path d="M0 470 Q340 440 660 480 T1200 460" />
+            {/* Latitude / Longitude Cartographic Grid */}
+            <g stroke="#38bdf8" strokeOpacity="0.09" strokeWidth="1">
+              {[120, 240, 360, 480, 600, 720, 840, 960, 1080].map((gx) => (
+                <line key={`vx-${gx}`} x1={gx} y1="0" x2={gx} y2="540" />
+              ))}
+              {[90, 180, 270, 360, 450].map((gy) => (
+                <line key={`hy-${gy}`} x1="0" y1={gy} x2="1200" y2={gy} />
+              ))}
             </g>
 
+            {/* Ocean Bathymetry Shelves & Currents */}
             <path
-              d="M40 310 Q140 200 280 250 Q350 320 310 430 Q180 490 60 420 Z"
-              fill="url(#greenLand)"
-              stroke="#86efac"
-              strokeOpacity="0.4"
-              strokeWidth="3"
+              d="M25 305 Q150 165 300 230 Q435 125 605 185 Q755 65 920 140 Q945 265 865 355 Q1020 295 1165 340 Q1185 480 990 520 Q745 485 570 430 Q330 460 155 495 Q25 435 25 305 Z"
+              fill="url(#coastalShelf)"
             />
-            <g fill="#1b4322" fillOpacity="0.72">
-              <polygon points="105,305 117,275 129,305" />
-              <polygon points="240,295 251,268 262,295" />
-              <rect x="195" y="388" width="22" height="16" rx="2" fill="#991b1b" />
+            <g stroke="#38bdf8" strokeOpacity="0.14" strokeWidth="1.2" fill="none" strokeDasharray="6 8">
+              <path d="M0 130 Q260 95 530 145 T1200 108" />
+              <path d="M0 285 Q290 250 580 295 T1200 265" />
+              <path d="M0 450 Q340 415 680 465 T1200 440" />
             </g>
 
-            <path
-              d="M320 220 Q460 150 590 215 Q635 310 565 405 Q430 430 340 340 Z"
-              fill="url(#canyonLand)"
-              stroke="#fdba74"
-              strokeOpacity="0.42"
-              strokeWidth="3"
-            />
-            <path d="M395 230 L412 205 L455 205 L470 230 Z" fill="#7c2d12" fillOpacity="0.65" />
-            <path d="M510 300 L525 275 L562 275 L575 300 Z" fill="#7c2d12" fillOpacity="0.65" />
+            {/* 1. COUNTRYSIDE BIOME: Rolling Meadows, Pine Forest, River Delta & Elevation Contours */}
+            <g>
+              <path
+                d="M36 308 Q138 190 286 244 Q358 318 314 432 Q182 496 58 424 Z"
+                fill="url(#greenLand)"
+                stroke="#86efac"
+                strokeOpacity="0.48"
+                strokeWidth="2.5"
+              />
+              {/* Elevation contour rings */}
+              <path
+                d="M72 325 Q152 232 260 268 Q312 326 280 404 Q178 448 86 392 Z"
+                fill="none"
+                stroke="#bbf7d0"
+                strokeOpacity="0.28"
+                strokeWidth="1.5"
+              />
+              <path
+                d="M108 336 Q165 270 236 296 Q268 338 242 384 Q176 410 120 374 Z"
+                fill="#4ade80"
+                fillOpacity="0.14"
+                stroke="#dcfce7"
+                strokeOpacity="0.32"
+                strokeWidth="1.2"
+              />
+              {/* Winding valley river */}
+              <path
+                d="M154 222 Q190 278 164 335 T216 456"
+                fill="none"
+                stroke="#38bdf8"
+                strokeOpacity="0.72"
+                strokeWidth="5"
+                strokeLinecap="round"
+              />
+              {/* Pine clusters & red barn landmark */}
+              <g fill="#14532d" fillOpacity="0.82">
+                <polygon points="96,306 108,274 120,306" />
+                <polygon points="114,316 125,286 136,316" />
+                <polygon points="242,294 254,264 266,294" />
+                <polygon points="258,308 269,280 280,308" />
+                <polygon points="122,404 132,380 142,404" />
+              </g>
+              <rect x="200" y="382" width="22" height="16" rx="2" fill="#b91c1c" />
+              <polygon points="198,382 211,371 224,382" fill="#e2e8f0" />
+            </g>
 
-            <path
-              d="M610 140 Q740 80 885 150 Q925 270 845 360 Q715 385 625 280 Z"
-              fill="url(#frostLand)"
-              stroke="#bfdbfe"
-              strokeOpacity="0.52"
-              strokeWidth="3"
-            />
-            <polygon points="695,180 735,112 775,180" fill="#f8fafc" fillOpacity="0.72" />
-            <polygon points="785,205 820,136 858,205" fill="#e0f2fe" fillOpacity="0.65" />
+            {/* 2. RED CANYON BIOME: Mesa Terraces, Gorge & Trestle Span */}
+            <g>
+              <path
+                d="M318 222 Q462 146 594 214 Q640 314 568 408 Q432 436 338 342 Z"
+                fill="url(#canyonLand)"
+                stroke="#fdba74"
+                strokeOpacity="0.48"
+                strokeWidth="2.5"
+              />
+              {/* Topographic canyon gorge */}
+              <path
+                d="M356 268 Q458 232 548 278 Q568 338 518 378 Q428 394 374 332 Z"
+                fill="#7c2d12"
+                fillOpacity="0.32"
+                stroke="#fed7aa"
+                strokeOpacity="0.28"
+                strokeWidth="1.4"
+              />
+              {/* Shaded mesas */}
+              <path d="M390 232 L408 202 L456 202 L472 232 Z" fill="#9a3412" />
+              <path d="M408 202 L456 202 L448 214 L414 214 Z" fill="#fb923c" fillOpacity="0.6" />
+              <path d="M506 304 L524 274 L564 274 L578 304 Z" fill="#7c2d12" />
+              <path d="M524 274 L564 274 L556 286 L530 286 Z" fill="#fdba74" fillOpacity="0.55" />
+              {/* Dry riverbed */}
+              <path
+                d="M398 372 Q458 318 520 342"
+                fill="none"
+                stroke="#451a03"
+                strokeOpacity="0.55"
+                strokeWidth="4.5"
+                strokeLinecap="round"
+              />
+            </g>
 
-            <circle
-              cx="1030"
-              cy="130"
-              r="108"
-              fill="url(#moonLand)"
-              stroke="#cbd5e1"
-              strokeOpacity="0.48"
-              strokeWidth="3"
-            />
-            <circle cx="995" cy="105" r="22" fill="#4b5563" fillOpacity="0.65" />
-            <circle cx="1065" cy="145" r="16" fill="#4b5563" fillOpacity="0.65" />
+            {/* 3. FROST PEAKS BIOME: Glacier Ridges, Snow Caps & Aurora Ribbon */}
+            <g>
+              <path
+                d="M608 138 Q742 74 888 148 Q930 272 848 364 Q712 390 622 282 Z"
+                fill="url(#frostLand)"
+                stroke="#bae6fd"
+                strokeOpacity="0.58"
+                strokeWidth="2.5"
+              />
+              {/* Glacier contour rings */}
+              <path
+                d="M648 168 Q746 112 854 166 Q884 256 822 328 Q720 346 656 266 Z"
+                fill="none"
+                stroke="#ffffff"
+                strokeOpacity="0.34"
+                strokeWidth="1.4"
+              />
+              {/* Shaded relief peaks */}
+              <polygon points="692,190 738,108 784,190" fill="#334155" fillOpacity="0.65" />
+              <polygon points="738,108 784,190 742,190" fill="#e0f2fe" fillOpacity="0.88" />
+              <polygon points="782,218 824,138 866,218" fill="#1e293b" fillOpacity="0.62" />
+              <polygon points="824,138 866,218 826,218" fill="#f8fafc" fillOpacity="0.82" />
+              {/* Aurora ribbon */}
+              <path
+                d="M640 120 Q720 82 810 110 T895 104"
+                fill="none"
+                stroke="#34d399"
+                strokeOpacity="0.45"
+                strokeWidth="8"
+                strokeLinecap="round"
+              />
+            </g>
 
-            <path
-              d="M740 340 Q890 295 1070 325 Q1165 375 1130 465 Q980 515 790 465 Q710 415 740 340 Z"
-              fill="url(#viceLand)"
-              stroke="#00f5ff"
-              strokeOpacity="0.55"
-              strokeWidth="3"
-            />
+            {/* 4. MOON BIOME: Orbital Crater Sphere, Terminator Shadow & Mare Basins */}
+            <g>
+              <circle
+                cx="1032"
+                cy="128"
+                r="108"
+                fill="url(#moonLand)"
+                stroke="#e2e8f0"
+                strokeOpacity="0.52"
+                strokeWidth="2.5"
+              />
+              <circle cx="992" cy="100" r="24" fill="#374151" fillOpacity="0.68" stroke="#cbd5e1" strokeOpacity="0.3" strokeWidth="1.5" />
+              <circle cx="1068" cy="148" r="18" fill="#374151" fillOpacity="0.62" stroke="#cbd5e1" strokeOpacity="0.28" strokeWidth="1.5" />
+              <circle cx="1036" cy="76" r="11" fill="#4b5563" fillOpacity="0.65" />
+              <circle cx="964" cy="158" r="13" fill="#4b5563" fillOpacity="0.58" />
+              {/* Lunar rover base beacon */}
+              <rect x="980" y="114" width="12" height="8" rx="2" fill="#facc15" />
+            </g>
 
+            {/* 5. VICE COASTWAY BIOME: Barrier Islands, Causeway Bridges & Neon Strip */}
+            <g>
+              <path
+                d="M736 338 Q890 292 1074 322 Q1172 374 1134 468 Q982 520 788 468 Q706 416 736 338 Z"
+                fill="url(#viceLand)"
+                stroke="#22d3ee"
+                strokeOpacity="0.62"
+                strokeWidth="2.5"
+              />
+              {/* Barrier island & bay */}
+              <path
+                d="M840 356 Q952 332 1068 358 Q1096 408 1044 446 Q924 464 832 422 Z"
+                fill="#0f172a"
+                fillOpacity="0.34"
+                stroke="#f472b6"
+                strokeOpacity="0.35"
+                strokeWidth="1.5"
+              />
+              {/* Causeway span */}
+              <line x1="796" y1="398" x2="1088" y2="392" stroke="#22d3ee" strokeWidth="3.5" strokeOpacity="0.8" />
+              {/* Deco skyline blocks */}
+              <g fill="#f43f5e" fillOpacity="0.72">
+                <rect x="985" y="362" width="10" height="22" rx="1.5" />
+                <rect x="1000" y="352" width="12" height="32" rx="1.5" fill="#fbbf24" fillOpacity="0.75" />
+                <rect x="1016" y="366" width="9" height="18" rx="1.5" fill="#22d3ee" fillOpacity="0.75" />
+              </g>
+            </g>
+
+            {/* Main Frontier Highway & Vice Coastway Route with Mile Markers */}
             <path
-              d="M168 378 C240 340, 320 305, 408 280 C520 245, 590 205, 672 184 C790 155, 900 132, 1008 108"
+              d="M192 368 C258 332, 336 298, 432 270 C535 238, 600 198, 672 184 C786 155, 898 132, 984 118"
               fill="none"
-              stroke="#ffffff"
-              strokeWidth="4.5"
+              stroke="#0f172a"
+              strokeWidth="9"
+              strokeLinecap="round"
+              strokeOpacity="0.55"
+            />
+            <path
+              d="M192 368 C258 332, 336 298, 432 270 C535 238, 600 198, 672 184 C786 155, 898 132, 984 118"
+              fill="none"
+              stroke="#f8fafc"
+              strokeWidth="4"
               strokeDasharray="12 10"
               strokeLinecap="round"
-              strokeOpacity="0.88"
+              strokeOpacity="0.92"
             />
             <path
-              d="M408 280 C550 325, 740 365, 936 394"
+              d="M432 270 C570 318, 745 362, 936 388"
+              fill="none"
+              stroke="#0f172a"
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeOpacity="0.55"
+            />
+            <path
+              d="M432 270 C570 318, 745 362, 936 388"
               fill="none"
               stroke="#ff2a85"
-              strokeWidth="4"
+              strokeWidth="3.8"
               strokeDasharray="10 8"
               strokeLinecap="round"
-              strokeOpacity="0.85"
+              strokeOpacity="0.92"
             />
+
+            {/* Route Waypoint Pins */}
+            <g fill="#fbbf24" stroke="#0f172a" strokeWidth="1.5">
+              <circle cx="312" cy="312" r="4.5" />
+              <circle cx="566" cy="224" r="4.5" />
+              <circle cx="835" cy="146" r="4.5" />
+              <circle cx="695" cy="340" r="4.5" fill="#22d3ee" />
+            </g>
+
+            {/* Subtle Atmospheric Cloud Wisps */}
+            <g fill="#ffffff" fillOpacity="0.06">
+              <ellipse cx="260" cy="135" rx="95" ry="18" />
+              <ellipse cx="640" cy="465" rx="130" ry="20" />
+              <ellipse cx="1060" cy="260" rx="85" ry="14" />
+            </g>
+
+            {/* Compass Rose (Top Left) */}
+            <g transform="translate(56, 56)" opacity="0.7">
+              <circle cx="0" cy="0" r="24" fill="#0f172a" fillOpacity="0.55" stroke="#38bdf8" strokeOpacity="0.45" strokeWidth="1.5" />
+              <polygon points="0,-18 5,-3 0,-7 -5,-3" fill="#fbbf24" />
+              <polygon points="0,18 4,3 0,7 -4,3" fill="#94a3b8" />
+              <polygon points="-18,0 -3,-4 -7,0 -3,4" fill="#94a3b8" />
+              <polygon points="18,0 3,-4 7,0 3,4" fill="#94a3b8" />
+              <text x="0" y="-27" textAnchor="middle" fill="#fbbf24" fontSize="9" fontWeight="bold">N</text>
+            </g>
           </svg>
 
           {STAGES.map((stage) => {

@@ -16,6 +16,13 @@ export interface TerrainSample {
   bridgeLength: number;
 }
 
+export interface TerrainLookaheadPoint {
+  dx: number;
+  dy: number;
+  slope: number;
+  surface: SurfaceType;
+}
+
 export interface CollectibleSpawn {
   index: number;
   kind: 'coin' | 'fuel';
@@ -33,6 +40,33 @@ export function smoothstep(t: number): number {
 export function hash01(n: number): number {
   const s = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
   return s - Math.floor(s);
+}
+
+function perlinGrad1D(cell: number): number {
+  return hash01(cell * 17.3 + 5.1) * 2 - 1;
+}
+
+export function perlin1D(x: number): number {
+  const i0 = Math.floor(x);
+  const i1 = i0 + 1;
+  const f = x - i0;
+  // Quintic Hermite fade curve (6t^5 - 15t^4 + 10t^3) for smooth C2 terrain derivatives
+  const u = f * f * f * (f * (f * 6 - 15) + 10);
+  const g0 = perlinGrad1D(i0) * f;
+  const g1 = perlinGrad1D(i1) * (f - 1);
+  return g0 + (g1 - g0) * u;
+}
+
+export function fbmPerlin1D(x: number, octaves = 3): number {
+  let sum = 0;
+  let amp = 0.58;
+  let freq = 1;
+  for (let i = 0; i < octaves; i++) {
+    sum += perlin1D(x * freq + i * 31.7) * amp;
+    freq *= 2.04;
+    amp *= 0.48;
+  }
+  return sum;
 }
 
 export function getBridgeInfo(
@@ -101,7 +135,7 @@ export function getTunnelInfo(
       startX,
       length,
       s: mod / length,
-      ceilingY: maxFloor + 5.2,
+      ceilingY: maxFloor + 5.8,
     };
   }
   return { active: false, startX: 0, length: 0, s: 0, ceilingY: 999 };
@@ -109,39 +143,56 @@ export function getTunnelInfo(
 
 /**
  * Base organic terrain height in meters (Y-up).
- * Smooth C1-continuous waves, launchpad flattening, progressive climbing ramps,
- * and stage-specific signature features (canyon gorges, lunar crater bowls, frost peaks).
+ * Combines 1D Perlin FBM chunks (non-repeating endless off-road variety),
+ * smooth C1-continuous waves, launchpad flattening, progressive climbing chunks,
+ * and stage-specific signature features (canyon gorges, lunar crater bowls).
  */
 function sampleBaseGroundHeightRaw(x: number, stage: StageConfig): number {
   const dist = Math.max(0, x - START_X);
   // Smooth launchpad around start so spawn is level and stable
-  const launchBlend = smoothstep((dist - 10) / 35);
-  // Progressive difficulty ramp: gentle at start, steeper climbs after 400m..1800m
-  const difficulty = 0.55 + Math.min(1.45, dist / 950);
+  const launchBlend = smoothstep((dist - 12) / 30);
+  // Progressive chunked difficulty ramp every 90m with smooth cosine transitions
+  const chunkPhase = dist / 90;
+  const chunkIdx = Math.floor(chunkPhase);
+  const chunkFrac = 0.5 - 0.5 * Math.cos(Math.PI * (chunkPhase - chunkIdx));
+  const chunkChallenge =
+    0.92 + 0.22 * (hash01(chunkIdx * 7 + 3) * (1 - chunkFrac) + hash01((chunkIdx + 1) * 7 + 3) * chunkFrac);
+  const difficulty = (0.62 + Math.min(1.55, dist / 850)) * chunkChallenge;
   const wl = stage.wavelengthMult;
   const amp = stage.ampMult * launchBlend * difficulty;
 
-  // Multi-octave rolling hills
-  const h1 = Math.sin(x / (18 * wl)) * 2.4;
-  const h2 = Math.sin(x / (8.2 * wl) + 1.4) * 1.05;
-  const h3 = Math.sin(x / (3.9 * wl) + 2.6) * 0.34;
-  // Micro bumpiness (subtle pebbles/undulations)
+  // Multi-octave rolling hills + Perlin gradient FBM endless ridge variation
+  const h1 = Math.sin(x / (16.5 * wl)) * 2.15;
+  const h2 = Math.sin(x / (7.6 * wl) + 1.4) * 1.05;
+  const h3 = Math.sin(x / (3.6 * wl) + 2.6) * 0.34;
   const h4 = Math.sin(x / 1.45) * 0.07;
+  const perlinRelief = fbmPerlin1D(x / (18.0 * wl), 3) * 3.65;
 
-  // Gradual macro elevation waves (long climbs & valley descents)
+  // Dramatic macro steep 25-40 deg hill ascents followed by fast compression valleys
+  const ridgeCycle = Math.sin(dist / (78 * wl)) * 4.4 * smoothstep((dist - 45) / 85);
   const macroClimb =
-    Math.sin(dist / 160) * 3.8 * smoothstep((dist - 80) / 140) +
-    Math.max(0, (dist - 150) * 0.012);
+    ridgeCycle +
+    Math.sin(dist / 165) * 4.2 * smoothstep((dist - 80) / 130) +
+    Math.max(0, (dist - 120) * 0.016);
 
-  let y = macroClimb + amp * (h1 + h2 + h3 + h4);
+  let y = macroClimb + amp * (h1 + h2 + h3 + h4 + perlinRelief);
 
-  // Signature tabletop jump ramps every ~125m after 90m
-  if (dist > 90) {
-    const rampPeriod = 125;
-    const m = ((dist - 90) % rampPeriod + rampPeriod) % rampPeriod;
-    const rampUp = smoothstep((m - 72) / 12);
-    const rampDown = 1 - smoothstep((m - 92) / 7);
-    y += rampUp * rampDown * 2.4 * stage.ampMult * Math.min(1.2, difficulty);
+  // Signature sharp launch crests / tabletop jumps every ~110m after 75m
+  if (dist > 75) {
+    const rampPeriod = 110;
+    const m = ((dist - 75) % rampPeriod + rampPeriod) % rampPeriod;
+    const rampUp = smoothstep((m - 60) / 10);
+    const rampDown = 1 - smoothstep((m - 76) / 6);
+    y += rampUp * rampDown * 3.0 * stage.ampMult * Math.min(1.25, difficulty);
+  }
+
+  // Rhythmic whoops / moguls section between 40% and 55% of every 160m block after 140m
+  if (dist > 140) {
+    const whoopMod = ((dist - 140) % 160 + 160) % 160;
+    if (whoopMod < 36) {
+      const env = Math.sin((whoopMod / 36) * Math.PI);
+      y += env * Math.sin(whoopMod * 1.15) * 0.42 * stage.ampMult;
+    }
   }
 
   // Moon crater bowls: smooth curved depression lips for big low-G launches
@@ -166,7 +217,45 @@ function sampleBaseGroundHeightRaw(x: number, stage: StageConfig): number {
     y -= gorgeDepth * Math.pow(gorgeProfile, 0.55);
   }
 
+  // Smooth Summit Finish plateau pad so crossing the finish gate feels clean and stable
+  const summitX = getSummitX(stage);
+  if (x > summitX - 16) {
+    const blend = smoothstep((x - (summitX - 16)) / 10);
+    const plateauBase =
+      macroClimb +
+      stage.ampMult *
+        0.4 *
+        (Math.sin((summitX - 16) / (16.5 * wl)) * 1.4);
+    y = y * (1 - blend * 0.72) + plateauBase * (blend * 0.72);
+  }
+
   return y;
+}
+
+export function getSummitX(stage: StageConfig): number {
+  return START_X + stage.summitMeters;
+}
+
+export interface MinimapPoint {
+  normX: number;
+  y: number;
+  surface: SurfaceType;
+}
+
+export function sampleElevationProfile(
+  stage: StageConfig,
+  sampleCount = 60,
+): MinimapPoint[] {
+  const pts: MinimapPoint[] = [];
+  const span = stage.summitMeters;
+  for (let i = 0; i < sampleCount; i++) {
+    const normX = i / Math.max(1, sampleCount - 1);
+    const x = START_X + normX * span;
+    const y = sampleDriveHeight(x, stage);
+    const { surface } = getSurfaceAt(x, stage);
+    pts.push({ normX, y, surface });
+  }
+  return pts;
 }
 
 export function sampleBaseGroundHeight(x: number, stage: StageConfig): number {
@@ -191,9 +280,9 @@ export function getSurfaceAt(x: number, stage: StageConfig): { surface: SurfaceT
   if (br.active) {
     return { surface: 'wood', muMult: 0.94 };
   }
+  const dist = Math.max(0, x - START_X);
   if (stage.id === 'frost_peaks') {
-    // Periodic slick blue-ice stretches after 80m
-    const dist = Math.max(0, x - START_X);
+    // Periodic slick blue-ice stretches after 75m
     if (dist > 75) {
       const sector = Math.floor(x / 24);
       if (hash01(sector + 41) < 0.36) {
@@ -203,6 +292,12 @@ export function getSurfaceAt(x: number, stage: StageConfig): { surface: SurfaceT
     return { surface: 'snow', muMult: 0.86 };
   }
   if (stage.id === 'red_canyon') {
+    if (dist > 85) {
+      const sandSector = Math.floor(x / 20);
+      if (hash01(sandSector + 67) < 0.28) {
+        return { surface: 'sand', muMult: 0.72 };
+      }
+    }
     const sector = Math.floor(x / 18);
     if (hash01(sector + 17) < 0.35) {
       return { surface: 'rock', muMult: 1.05 };
@@ -210,10 +305,22 @@ export function getSurfaceAt(x: number, stage: StageConfig): { surface: SurfaceT
     return { surface: 'dirt', muMult: 0.94 };
   }
   if (stage.id === 'vice_coast') {
+    if (dist > 110) {
+      const sandSector = Math.floor(x / 24);
+      if (hash01(sandSector + 91) < 0.22) {
+        return { surface: 'sand', muMult: 0.78 };
+      }
+    }
     return { surface: 'asphalt', muMult: 1.08 };
   }
   if (stage.id === 'moon') {
     return { surface: 'regolith', muMult: 0.96 };
+  }
+  if (dist > 95) {
+    const mudSector = Math.floor(x / 22);
+    if (hash01(mudSector + 31) < 0.28) {
+      return { surface: 'mud', muMult: 0.60 };
+    }
   }
   return { surface: 'dirt', muMult: 1.0 };
 }
@@ -251,6 +358,37 @@ export function sampleTerrain(x: number, stage: StageConfig): TerrainSample {
 }
 
 /**
+ * Fast mathematical lookahead sensor array for the autonomous AI driver
+ * (inspired by alexzh3/hillclimbracing & Code Bullet forward slope rays).
+ */
+export function sampleLookaheadProfile(
+  x: number,
+  count: number,
+  stepMeters: number,
+  stage: StageConfig,
+): TerrainLookaheadPoint[] {
+  const baseY = sampleDriveHeight(x, stage);
+  const pts: TerrainLookaheadPoint[] = [];
+  const eps = 0.4;
+  for (let i = 1; i <= count; i++) {
+    const dx = i * stepMeters;
+    const sx = x + dx;
+    const sy = sampleDriveHeight(sx, stage);
+    const syR = sampleDriveHeight(sx + eps, stage);
+    const syL = sampleDriveHeight(sx - eps, stage);
+    const slope = (syR - syL) / (2 * eps);
+    const { surface } = getSurfaceAt(sx, stage);
+    pts.push({
+      dx,
+      dy: sy - baseY,
+      slope,
+      surface,
+    });
+  }
+  return pts;
+}
+
+/**
  * Deterministic collectible spawning (coins & fuel jerrycans).
  * Fuel jerrycans spawn reliably every ~115m so runs stay tactical and fair.
  */
@@ -265,7 +403,7 @@ export function getCollectibleForSlot(slot: number, stage: StageConfig): Collect
       index: slot,
       kind: 'fuel',
       x,
-      y: groundY + 1.05,
+      y: groundY + (stage.id === 'moon' ? 1.35 : 1.05),
       value: 100,
     };
   }

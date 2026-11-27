@@ -58,6 +58,10 @@ export function loadSaveData(): SaveData {
       unlockedVehicles: { ...base.unlockedVehicles, ...(parsed.unlockedVehicles ?? {}) },
       vehiclePaints: { ...base.vehiclePaints, ...(parsed.vehiclePaints ?? {}) },
       vehicleWheels: { ...base.vehicleWheels, ...(parsed.vehicleWheels ?? {}) },
+      vehicleClimbTires: { ...base.vehicleClimbTires, ...(parsed.vehicleClimbTires ?? {}) },
+      climbSetup: { ...base.climbSetup, ...(parsed.climbSetup ?? {}) },
+      aiAutoTune: parsed.aiAutoTune ?? base.aiAutoTune,
+      gyroEnabled: parsed.gyroEnabled ?? base.gyroEnabled,
       unlockedWheels: { ...base.unlockedWheels, ...(parsed.unlockedWheels ?? {}) },
       vehicleAccessories: {
         ranger: parsed.vehicleAccessories?.ranger ?? base.vehicleAccessories.ranger,
@@ -71,6 +75,19 @@ export function loadSaveData(): SaveData {
       unlockedAccessories: {
         ...base.unlockedAccessories,
         ...(parsed.unlockedAccessories ?? {}),
+      },
+      vehicleTuningParts: {
+        ranger: parsed.vehicleTuningParts?.ranger ?? base.vehicleTuningParts.ranger,
+        monster: parsed.vehicleTuningParts?.monster ?? base.vehicleTuningParts.monster,
+        buggy: parsed.vehicleTuningParts?.buggy ?? base.vehicleTuningParts.buggy,
+        muscle: parsed.vehicleTuningParts?.muscle ?? base.vehicleTuningParts.muscle,
+        superbike: parsed.vehicleTuningParts?.superbike ?? base.vehicleTuningParts.superbike,
+        cheetah_vc: parsed.vehicleTuningParts?.cheetah_vc ?? base.vehicleTuningParts.cheetah_vc,
+        donk_leonida: parsed.vehicleTuningParts?.donk_leonida ?? base.vehicleTuningParts.donk_leonida,
+      },
+      unlockedTuningParts: {
+        ...base.unlockedTuningParts,
+        ...(parsed.unlockedTuningParts ?? {}),
       },
       vehicleNeons: {
         ...base.vehicleNeons,
@@ -104,8 +121,21 @@ export function loadSaveData(): SaveData {
           ? { ...createDailyChallenge(), ...parsed.dailyChallenge }
           : createDailyChallenge(),
       totals: { ...base.totals, ...(parsed.totals ?? {}) },
-      tuning: { ...base.tuning, ...(parsed.tuning ?? {}) },
-      settings: { ...base.settings, ...(parsed.settings ?? {}) },
+      tuning: {
+        ...base.tuning,
+        ...(parsed.tuning ?? {}),
+        rideHeight: parsed.tuning?.rideHeight ?? base.tuning.rideHeight,
+        gearRatio: parsed.tuning?.gearRatio ?? base.tuning.gearRatio,
+        proBuild: parsed.tuning?.proBuild ?? base.tuning.proBuild,
+      },
+      settings: {
+        ...base.settings,
+        ...(parsed.settings ?? {}),
+        rivalMode:
+          parsed.settings?.rivalMode ??
+          (parsed.settings?.showGhost === false ? 'off' : base.settings.rivalMode),
+        touchControlsMode: parsed.settings?.touchControlsMode ?? base.settings.touchControlsMode,
+      },
       tutorialSeen: parsed.tutorialSeen ?? base.tutorialSeen,
     };
 

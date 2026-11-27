@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowLeft, RotateCcw, Trash2 } from 'lucide-react';
-import { DEFAULT_TUNING, TUNING_PRESETS } from '../game/constants';
+import { DEFAULT_TUNING, PRO_BUILDS, TUNING_PRESETS } from '../game/constants';
 import { TuningConfig } from '../types/game';
 
 interface TuningModalProps {
@@ -10,8 +10,10 @@ interface TuningModalProps {
   onClose: () => void;
 }
 
+type NumericTuningKey = Exclude<keyof TuningConfig, 'proBuild'>;
+
 const SLIDERS: {
-  key: keyof TuningConfig;
+  key: NumericTuningKey;
   label: string;
   helper: string;
   min: number;
@@ -27,6 +29,24 @@ const SLIDERS: {
     max: 1.8,
     step: 0.05,
     unit: 'x',
+  },
+  {
+    key: 'gearRatio',
+    label: 'Final Drive Gear Ratio',
+    helper: 'Lower climbs steeper grades; higher boosts top speed.',
+    min: 0.75,
+    max: 1.3,
+    step: 0.05,
+    unit: 'x',
+  },
+  {
+    key: 'rideHeight',
+    label: 'Suspension Ride Height',
+    helper: 'Lifts or slams chassis clearance (-0.10m to +0.20m).',
+    min: -0.1,
+    max: 0.2,
+    step: 0.02,
+    unit: 'm',
   },
   {
     key: 'suspensionStiffness',
@@ -101,14 +121,13 @@ export const TuningModal: React.FC<TuningModalProps> = ({
 }) => {
   const [confirmReset, setConfirmReset] = useState(false);
 
+  const numericKeys = SLIDERS.map((s) => s.key);
   const activePreset = TUNING_PRESETS.find((p) =>
-    (Object.keys(DEFAULT_TUNING) as (keyof TuningConfig)[]).every(
-      (k) => Math.abs(p.values[k] - tuning[k]) < 0.001,
-    ),
+    numericKeys.every((k) => Math.abs(p.values[k] - tuning[k]) < 0.001),
   );
 
   // Live SVG visualizer geometry derived from current tuning sliders
-  const rideDrop = Math.round((1.6 - tuning.suspensionStiffness) * 14);
+  const rideDrop = Math.round((1.6 - tuning.suspensionStiffness) * 12 - tuning.rideHeight * 38);
   const frontShare = Math.round((1 - tuning.rearDriveBias) * 100);
   const rearShare = Math.round(tuning.rearDriveBias * 100);
 
@@ -169,8 +188,43 @@ export const TuningModal: React.FC<TuningModalProps> = ({
         </span>
       </div>
 
-      {/* Live Chassis Telemetry Visualizer + Sliders */}
+      {/* Live Chassis Telemetry Visualizer + Pro Builds + Sliders */}
       <div className="frontier-scroll my-3 flex-1 space-y-3 overflow-y-auto pr-1">
+        {/* Pro Build Specs */}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {PRO_BUILDS.map((b) => {
+            const active = tuning.proBuild === b.id;
+            return (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() =>
+                  onUpdateTuning({
+                    ...DEFAULT_TUNING,
+                    ...b.tuningPatch,
+                    proBuild: b.id,
+                  })
+                }
+                className={`rounded-2xl border p-3 text-left transition ${
+                  active
+                    ? 'border-amber-400 bg-amber-500/15 ring-1 ring-amber-400/50'
+                    : 'panel-bevel border-white/12 hover:border-white/35'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-display text-sm font-extrabold tracking-wider text-white uppercase italic">
+                    {b.name}
+                  </span>
+                  <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-black tracking-wider text-amber-300 uppercase">
+                    {b.tag}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] leading-snug text-slate-300">{b.desc}</p>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Reactive Chassis Blueprint Card */}
         <div className="panel-bevel flex flex-col items-center justify-between gap-4 rounded-2xl border border-violet-400/35 p-3.5 sm:flex-row">
           <svg
@@ -180,7 +234,7 @@ export const TuningModal: React.FC<TuningModalProps> = ({
           >
             {/* Ground line */}
             <line x1="16" y1="82" x2="304" y2="82" stroke="#334155" strokeWidth="2" />
-            {/* Chassis frame shifting with spring stiffness */}
+            {/* Chassis frame shifting with ride height & spring stiffness */}
             <g transform={`translate(0, ${rideDrop * 0.4})`}>
               <path
                 d="M72 44 L105 24 L185 24 L238 42 L252 54 L66 54 Z"
@@ -220,15 +274,15 @@ export const TuningModal: React.FC<TuningModalProps> = ({
               </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-[#111923] px-3 py-2">
-              <div className="text-[10px] font-bold text-slate-400 uppercase">SPRING RATE</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase">RIDE HEIGHT</div>
               <div className="font-mono-num font-bold text-amber-300">
-                {tuning.suspensionStiffness.toFixed(2)}x
+                {tuning.rideHeight >= 0 ? '+' : ''}{(tuning.rideHeight * 100).toFixed(0)}cm
               </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-[#111923] px-3 py-2">
-              <div className="text-[10px] font-bold text-slate-400 uppercase">GRIP FACTOR</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase">GEAR RATIO</div>
               <div className="font-mono-num font-bold text-emerald-300">
-                {tuning.tireGrip.toFixed(2)}x
+                {tuning.gearRatio.toFixed(2)}x
               </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-[#111923] px-3 py-2">

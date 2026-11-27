@@ -16,7 +16,7 @@ export const FirstRunTutorialOverlay: React.FC<FirstRunTutorialOverlayProps> = (
             DRIVER BRIEFING
           </span>
           <h2 className="mt-1 font-display text-2xl font-black tracking-wider uppercase italic sm:text-3xl">
-            WELCOME TO JACK_HILL_GAME
+            WELCOME TO JACK HILL CRAWL
           </h2>
         </div>
         <button

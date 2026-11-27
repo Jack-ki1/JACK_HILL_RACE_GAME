@@ -13,7 +13,13 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { DEFAULT_SETTINGS } from '../game/constants';
-import { CameraShakeMode, GameSettings, GraphicsQuality } from '../types/game';
+import {
+  CameraShakeMode,
+  GameSettings,
+  GraphicsQuality,
+  RivalMode,
+  TouchControlsMode,
+} from '../types/game';
 
 interface SettingsModalProps {
   settings: GameSettings;
@@ -35,6 +41,18 @@ const SHAKE_OPTIONS: { id: CameraShakeMode; label: string }[] = [
   { id: 'full', label: 'FULL' },
   { id: 'subtle', label: 'SUBTLE' },
   { id: 'off', label: 'OFF' },
+];
+
+const RIVAL_OPTIONS: { id: RivalMode; label: string }[] = [
+  { id: 'ai', label: 'AI RACER' },
+  { id: 'ghost', label: 'GHOST BEST' },
+  { id: 'off', label: 'OFF' },
+];
+
+const TOUCH_OPTIONS: { id: TouchControlsMode; label: string }[] = [
+  { id: 'auto', label: 'AUTO (TOUCH)' },
+  { id: 'always', label: 'ALWAYS ON' },
+  { id: 'off', label: 'HIDDEN' },
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -277,14 +295,70 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
+          <div>
+            <div className="mb-1.5 text-xs font-bold tracking-wider text-slate-300 uppercase">
+              On-Screen Touch Pedals
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {TOUCH_OPTIONS.map((opt) => {
+                const active = settings.touchControlsMode === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() =>
+                      onUpdateSettings({
+                        ...settings,
+                        touchControlsMode: opt.id,
+                      })
+                    }
+                    className={`min-h-[44px] rounded-xl border py-2 font-display text-xs font-extrabold tracking-wider uppercase transition ${
+                      active
+                        ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
+                        : 'border-white/15 bg-[#111923] text-slate-300 hover:border-white/35'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-1.5 text-xs font-bold tracking-wider text-slate-300 uppercase">
+              Track Rival Mode
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {RIVAL_OPTIONS.map((opt) => {
+                const active = settings.rivalMode === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() =>
+                      onUpdateSettings({
+                        ...settings,
+                        rivalMode: opt.id,
+                        showGhost: opt.id !== 'off',
+                      })
+                    }
+                    className={`min-h-[44px] rounded-xl border py-2 font-display text-xs font-extrabold tracking-wider uppercase transition ${
+                      active
+                        ? 'border-cyan-400 bg-cyan-500/20 text-cyan-200'
+                        : 'border-white/15 bg-[#111923] text-slate-300 hover:border-white/35'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Feature Toggles */}
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {[
-              {
-                key: 'showGhost' as const,
-                label: 'GHOST RIVAL',
-                value: settings.showGhost,
-              },
               {
                 key: 'showControlHints' as const,
                 label: 'HUD HINTS',
@@ -302,7 +376,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={() =>
                   onUpdateSettings({ ...settings, [item.key]: !item.value })
                 }
-                className={`flex items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                className={`flex min-h-[44px] items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold transition ${
                   item.value
                     ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-200'
                     : 'border-white/15 bg-[#111923] text-slate-400'
@@ -331,10 +405,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 DESKTOP KEYBOARD
               </div>
               <ul className="space-y-1 text-xs text-slate-300">
-                <li><strong className="text-white">D / →</strong> Throttle & Air Back-Pitch</li>
-                <li><strong className="text-white">A / ←</strong> Brake / Reverse & Nose-Down</li>
-                <li><strong className="text-white">Shift</strong> Nitro Boost · <strong className="text-white">Space</strong> Handbrake</li>
-                <li><strong className="text-white">P / Esc</strong> Pause · <strong className="text-white">R</strong> Quick Restart</li>
+                <li><strong className="text-white">D / →</strong> Throttle &amp; Air Back-Pitch</li>
+                <li><strong className="text-white">A / ←</strong> Brake / Reverse &amp; Nose-Down</li>
+                <li><strong className="text-white">Shift</strong> Nitro · <strong className="text-white">Space</strong> Brake / Jump · <strong className="text-white">L</strong> 4WD Low</li>
+                <li><strong className="text-white">C</strong> Camera · <strong className="text-white">I</strong> AI Auto · <strong className="text-white">P / Esc</strong> Pause · <strong className="text-white">R</strong> Restart</li>
               </ul>
             </div>
 
@@ -347,7 +421,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <li><strong className="text-white">Left Pedal</strong> Hold Brake / Nose-Down</li>
                 <li><strong className="text-white">Right Pedal</strong> Hold Gas / Back-Pitch</li>
                 <li><strong className="text-white">Nitro Button</strong> Auto-throttles with Boost</li>
-                <li>Dual-pedal touch layout adapts to portrait &amp; landscape</li>
+                <li>Optional <strong className="text-white">Tilt / Gyro</strong> pitch control &amp; live AI X-Ray toggle in top HUD bar</li>
               </ul>
             </div>
 

@@ -1,13 +1,17 @@
 import {
+  ClimbSetupConfig,
+  ClimbTireConfig,
   DailyChallengeState,
   GameSettings,
   LiveryConfig,
   NeonColorConfig,
   PaintSwatch,
+  ProBuildId,
   SaveData,
   StageConfig,
   StageId,
   TuningConfig,
+  TuningPartId,
   UpgradeKey,
   VehicleAccessoryId,
   VehicleConfig,
@@ -21,6 +25,68 @@ export const MAX_TICKETS = 10;
 export const TICKET_REGEN_MS = 45_000;
 export const FREE_GEMS_COOLDOWN_MS = 120_000;
 
+export const DEFAULT_CLIMB_SETUP: ClimbSetupConfig = {
+  weather: 'dry',
+  timeOfDay: 'day',
+  climbMode: 'head_to_head',
+  difficulty: 'pro',
+};
+
+export const CLIMB_TIRES: ClimbTireConfig[] = [
+  {
+    id: 'all_terrain',
+    name: 'All-Terrain',
+    tag: 'BALANCED',
+    desc: 'Versatile tread blocks across dirt, gravel & coastal tarmac',
+    dirtGrip: 1.04,
+    mudGrip: 0.96,
+    rockGrip: 1.02,
+    iceSnowGrip: 0.92,
+    asphaltGrip: 1.05,
+    wearMult: 0.92,
+    rimAccent: '#94a3b8',
+  },
+  {
+    id: 'mud_bogger',
+    name: 'Mud-Bogger',
+    tag: 'DEEP PADDLE',
+    desc: 'Wide self-cleaning lugs built for loamy mud bogs & soft sand',
+    dirtGrip: 1.08,
+    mudGrip: 1.38,
+    rockGrip: 0.94,
+    iceSnowGrip: 0.98,
+    asphaltGrip: 0.92,
+    wearMult: 1.04,
+    rimAccent: '#d97706',
+  },
+  {
+    id: 'rock_crawler',
+    name: 'Rock-Crawler',
+    tag: 'STICKY COMPOUND',
+    desc: 'Soft high-durometer sidewalls gripping sheer sandstone & scree',
+    dirtGrip: 1.05,
+    mudGrip: 0.92,
+    rockGrip: 1.32,
+    iceSnowGrip: 0.88,
+    asphaltGrip: 1.08,
+    wearMult: 0.82,
+    rimAccent: '#ef4444',
+  },
+  {
+    id: 'ice_studded',
+    name: 'Ice-Studded',
+    tag: 'CARBIDE SPIKE',
+    desc: 'Tungsten studs biting hard into sheer blue ice & alpine snow',
+    dirtGrip: 0.96,
+    mudGrip: 0.94,
+    rockGrip: 0.92,
+    iceSnowGrip: 1.48,
+    asphaltGrip: 0.9,
+    wearMult: 0.96,
+    rimAccent: '#38bdf8',
+  },
+];
+
 export const STAGES: StageConfig[] = [
   {
     id: 'countryside',
@@ -28,6 +94,13 @@ export const STAGES: StageConfig[] = [
     subtitle: 'Sunlit green valley · Loamy dirt trails · Rolling climbs',
     unlockRequirementText: 'Unlocked from start',
     unlockPrevBestMeters: 0,
+    summitMeters: 600,
+    elevationGainMeters: 165,
+    maxGradePct: 34,
+    surfaceCategory: 'dirt_mud',
+    surfaceLabel: 'Dirt & Mud',
+    previewImage: '/src/assets/images/hill_countryside_1795773185185.jpg',
+    medalTargets: { goldSec: 44, silverSec: 56, bronzeSec: 74 },
     skyTop: '#2476cf',
     skyHorizon: '#bfe6ff',
     fogColor: '#b7dff6',
@@ -62,8 +135,15 @@ export const STAGES: StageConfig[] = [
     id: 'red_canyon',
     name: 'Red Canyon',
     subtitle: 'Sandstone mesas · Deep canyon gorges · Wooden trestle bridges',
-    unlockRequirementText: 'Reach 300m on Countryside',
-    unlockPrevBestMeters: 300,
+    unlockRequirementText: 'Unlocked in Paddock',
+    unlockPrevBestMeters: 0,
+    summitMeters: 720,
+    elevationGainMeters: 235,
+    maxGradePct: 42,
+    surfaceCategory: 'rock_canyon',
+    surfaceLabel: 'Rock & Scree',
+    previewImage: '/src/assets/images/hill_red_canyon_1795773184921.jpg',
+    medalTargets: { goldSec: 52, silverSec: 68, bronzeSec: 88 },
     skyTop: '#2e6db6',
     skyHorizon: '#f6be8b',
     fogColor: '#eab48a',
@@ -98,8 +178,15 @@ export const STAGES: StageConfig[] = [
     id: 'frost_peaks',
     name: 'Frost Peaks',
     subtitle: 'Aurora night sky · Slick ice patches · Steep alpine ridges',
-    unlockRequirementText: 'Reach 350m on Red Canyon',
-    unlockPrevBestMeters: 350,
+    unlockRequirementText: 'Unlocked in Paddock',
+    unlockPrevBestMeters: 0,
+    summitMeters: 780,
+    elevationGainMeters: 280,
+    maxGradePct: 44,
+    surfaceCategory: 'snow_ice',
+    surfaceLabel: 'Snow & Ice',
+    previewImage: '/src/assets/images/hill_frost_peaks_1795773185493.jpg',
+    medalTargets: { goldSec: 58, silverSec: 76, bronzeSec: 98 },
     skyTop: '#071636',
     skyHorizon: '#2a5a96',
     fogColor: '#1d3c68',
@@ -134,8 +221,15 @@ export const STAGES: StageConfig[] = [
     id: 'moon',
     name: 'Moon Crater',
     subtitle: 'Low 0.38g lunar gravity · Giant crater bowls · Mega stunt air',
-    unlockRequirementText: 'Reach 400m on Frost Peaks',
-    unlockPrevBestMeters: 400,
+    unlockRequirementText: 'Unlocked in Paddock',
+    unlockPrevBestMeters: 0,
+    summitMeters: 820,
+    elevationGainMeters: 310,
+    maxGradePct: 48,
+    surfaceCategory: 'lunar',
+    surfaceLabel: 'Lunar Regolith',
+    previewImage: '/src/assets/images/hill_moon_crater_1795773186667.jpg',
+    medalTargets: { goldSec: 60, silverSec: 78, bronzeSec: 102 },
     skyTop: '#02040a',
     skyHorizon: '#10152e',
     fogColor: '#0c1126',
@@ -172,6 +266,13 @@ export const STAGES: StageConfig[] = [
     subtitle: 'Leonida sunset highway · Coastal palms · Neon arches & high-speed causeway jumps',
     unlockRequirementText: 'Unlocked from start (Leonida)',
     unlockPrevBestMeters: 0,
+    summitMeters: 680,
+    elevationGainMeters: 195,
+    maxGradePct: 36,
+    surfaceCategory: 'asphalt',
+    surfaceLabel: 'Coastal Asphalt',
+    previewImage: '/src/assets/images/hill_vice_coast_1795773186419.jpg',
+    medalTargets: { goldSec: 42, silverSec: 55, bronzeSec: 72 },
     skyTop: '#1b1145',
     skyHorizon: '#ff7a59',
     fogColor: '#c95b7d',
@@ -227,6 +328,7 @@ export const VEHICLES: VehicleConfig[] = [
     gripMult: 1.02,
     airControlMult: 1.0,
     topSpeedMs: 31,
+    weightKg: 1480,
     defaultPaintId: 'frontier_red',
   },
   {
@@ -251,6 +353,7 @@ export const VEHICLES: VehicleConfig[] = [
     gripMult: 1.24,
     airControlMult: 0.85,
     topSpeedMs: 29.5,
+    weightKg: 2350,
     defaultPaintId: 'sunburst_gold',
   },
   {
@@ -275,6 +378,7 @@ export const VEHICLES: VehicleConfig[] = [
     gripMult: 0.98,
     airControlMult: 1.48,
     topSpeedMs: 33,
+    weightKg: 890,
     defaultPaintId: 'venom_lime',
   },
   {
@@ -299,6 +403,7 @@ export const VEHICLES: VehicleConfig[] = [
     gripMult: 0.9,
     airControlMult: 0.95,
     topSpeedMs: 38.5,
+    weightKg: 1620,
     defaultPaintId: 'burnt_orange',
   },
   {
@@ -323,6 +428,7 @@ export const VEHICLES: VehicleConfig[] = [
     gripMult: 0.95,
     airControlMult: 1.78,
     topSpeedMs: 41,
+    weightKg: 265,
     defaultPaintId: 'crimson_pulse',
   },
   {
@@ -347,6 +453,7 @@ export const VEHICLES: VehicleConfig[] = [
     gripMult: 1.06,
     airControlMult: 1.15,
     topSpeedMs: 42,
+    weightKg: 1380,
     defaultPaintId: 'vice_magenta',
   },
   {
@@ -371,6 +478,7 @@ export const VEHICLES: VehicleConfig[] = [
     gripMult: 1.08,
     airControlMult: 0.95,
     topSpeedMs: 35,
+    weightKg: 1890,
     defaultPaintId: 'candy_purple',
   },
 ];
@@ -405,7 +513,7 @@ export const LIVERY_DEFS: LiveryConfig[] = [
   { id: 'carbon_hood', name: 'Forged Carbon Hood', desc: 'Exposed matte carbon hood & roof' },
   { id: 'leonida_interceptor', name: 'VCPD Pursuit', desc: 'Leonida Highway unit door & roof graphics' },
   { id: 'sunset_rally', name: 'Ocean Sunset GT', desc: 'Sunset gold & coral flank rally decals' },
-  { id: 'sticker_bomb', name: 'Sticker Bomb', desc: 'GTA 6 Leonida high-contrast street-art vinyl wrap' },
+  { id: 'sticker_bomb', name: 'Sticker Bomb', desc: 'High-contrast street-art vinyl wrap' },
   { id: 'viper_stripe', name: 'Viper Stripe', desc: 'Aggressive twin motorsport stripes with razor pinlines' },
 ];
 
@@ -428,6 +536,61 @@ export const ACCESSORY_DEFS: AccessoryDef[] = [
   { id: 'bullbar', name: 'Steel Bull Bar', desc: 'Armored front winch & brush guard', price: 450 },
   { id: 'whip_flag', name: 'Rally Whip Flag', desc: 'Flexible dune whip & crimson pennant', price: 300 },
   { id: 'snorkel', name: 'Ram-Air Snorkel', desc: 'Raised intake (+4% torque, +3% top speed)', price: 600 },
+];
+
+export interface TuningPartDef {
+  id: TuningPartId;
+  name: string;
+  desc: string;
+  tag: string;
+  price: number;
+}
+
+export const MAX_EQUIPPED_PARTS = 3;
+
+export const TUNING_PART_DEFS: TuningPartDef[] = [
+  {
+    id: 'landing_boost',
+    name: 'Landing Boost',
+    desc: 'Triggers an explosive forward burst on clean wheel landings after airtime',
+    tag: 'IMPULSE',
+    price: 0,
+  },
+  {
+    id: 'wings',
+    name: 'Aero Wings',
+    desc: 'Generates mid-air lift & drag reduction for massive chasm glides',
+    tag: 'GLIDE',
+    price: 900,
+  },
+  {
+    id: 'overcharged_turbo',
+    name: 'Overcharged Turbo',
+    desc: 'Hold full throttle near top speed for 1.8s to unleash torque overdrive',
+    tag: 'OVERDRIVE',
+    price: 1200,
+  },
+  {
+    id: 'coin_boost',
+    name: 'Coin Boost',
+    desc: 'Every coin pickup fires a 0.9s acceleration surge to chain speed lines',
+    tag: 'CHAIN',
+    price: 850,
+  },
+  {
+    id: 'jump_shocks',
+    name: 'Jump Shocks',
+    desc: 'Tap Space / JUMP to violently spring your chassis airborne on command',
+    tag: 'KANGAROO',
+    price: 1400,
+  },
+  {
+    id: 'winter_tires',
+    name: 'Studded Chains',
+    desc: 'Bites aggressively into slick ice, deep mud bogs & loose canyon sand',
+    tag: 'TRACTION',
+    price: 750,
+  },
 ];
 
 export interface UpgradeDefinition {
@@ -497,6 +660,9 @@ export const DEFAULT_TUNING: TuningConfig = {
   gravityScale: 1.0,
   rearDriveBias: 0.55,
   cameraZoom: 1.0,
+  rideHeight: 0.0,
+  gearRatio: 1.0,
+  proBuild: 'stock',
 };
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -505,8 +671,10 @@ export const DEFAULT_SETTINGS: GameSettings = {
   graphicsQuality: 'auto',
   cameraShake: 'full',
   showGhost: true,
+  rivalMode: 'ai',
   reducedMotion: false,
   showControlHints: true,
+  touchControlsMode: 'auto',
 };
 
 export const TUNING_PRESETS: { id: string; name: string; values: TuningConfig }[] = [
@@ -514,17 +682,114 @@ export const TUNING_PRESETS: { id: string; name: string; values: TuningConfig }[
   {
     id: 'climber',
     name: 'Hill Climber',
-    values: { ...DEFAULT_TUNING, enginePower: 1.25, tireGrip: 1.35, suspensionStiffness: 1.15, rearDriveBias: 0.45 },
+    values: {
+      ...DEFAULT_TUNING,
+      enginePower: 1.25,
+      tireGrip: 1.35,
+      suspensionStiffness: 1.15,
+      rearDriveBias: 0.45,
+      rideHeight: 0.08,
+      gearRatio: 0.88,
+      proBuild: 'crawler',
+    },
   },
   {
     id: 'stunt',
     name: 'Stunt Jumper',
-    values: { ...DEFAULT_TUNING, enginePower: 1.3, airControl: 1.75, suspensionStiffness: 0.85, damping: 0.9, cameraZoom: 0.88 },
+    values: {
+      ...DEFAULT_TUNING,
+      enginePower: 1.3,
+      airControl: 1.75,
+      suspensionStiffness: 0.85,
+      damping: 0.9,
+      cameraZoom: 0.88,
+      rideHeight: 0.04,
+      gearRatio: 1.08,
+      proBuild: 'street',
+    },
   },
   {
     id: 'moon',
     name: 'Low-G Arcade',
-    values: { ...DEFAULT_TUNING, gravityScale: 0.65, airControl: 1.5, enginePower: 1.15, cameraZoom: 0.9 },
+    values: {
+      ...DEFAULT_TUNING,
+      gravityScale: 0.65,
+      airControl: 1.5,
+      enginePower: 1.15,
+      cameraZoom: 0.9,
+      rideHeight: 0.05,
+      gearRatio: 1.0,
+      proBuild: 'stock',
+    },
+  },
+];
+
+export interface ProBuildSpec {
+  id: ProBuildId;
+  name: string;
+  tag: string;
+  desc: string;
+  tuningPatch: Partial<TuningConfig>;
+}
+
+export const PRO_BUILDS: ProBuildSpec[] = [
+  {
+    id: 'stock',
+    name: 'Factory Spec',
+    tag: 'BALANCED',
+    desc: 'Factory ride height, neutral gear spacing & trail compliance',
+    tuningPatch: {
+      proBuild: 'stock',
+      rideHeight: 0,
+      gearRatio: 1.0,
+      suspensionStiffness: 1.0,
+      tireGrip: 1.0,
+      rearDriveBias: 0.55,
+    },
+  },
+  {
+    id: 'crawler',
+    name: 'Off-Road Crawler',
+    tag: 'TORQUE',
+    desc: '+10cm suspension lift, short climbing gears & front-biased 4WD lock',
+    tuningPatch: {
+      proBuild: 'crawler',
+      rideHeight: 0.1,
+      gearRatio: 0.84,
+      suspensionStiffness: 1.14,
+      tireGrip: 1.32,
+      rearDriveBias: 0.45,
+    },
+  },
+  {
+    id: 'street',
+    name: 'Vice Street',
+    tag: 'TOP SPEED',
+    desc: '-6cm slammed stance, tall highway gearing & crisp aero turn-in',
+    tuningPatch: {
+      proBuild: 'street',
+      rideHeight: -0.06,
+      gearRatio: 1.2,
+      suspensionStiffness: 1.28,
+      damping: 1.18,
+      airControl: 1.25,
+      rearDriveBias: 0.68,
+    },
+  },
+  {
+    id: 'donk',
+    name: 'Leonida Donk',
+    tag: 'HI-RISER',
+    desc: '+14cm hydraulic lift, bouncy soft rebound & showtime launch stance',
+    tuningPatch: {
+      proBuild: 'donk',
+      rideHeight: 0.14,
+      gearRatio: 0.95,
+      suspensionStiffness: 0.78,
+      damping: 0.76,
+      airControl: 1.15,
+      rearDriveBias: 0.62,
+    },
   },
 ];
 
@@ -568,17 +833,20 @@ export function createDailyChallenge(now = Date.now()): DailyChallengeState {
 
 export function createDefaultSave(): SaveData {
   return {
-    coins: 1200,
-    gems: 35,
+    coins: 4200,
+    gems: 45,
     tickets: MAX_TICKETS,
     ticketTimestamp: Date.now(),
     freeGemsTimestamp: 0,
-    selectedStage: 'vice_coast',
+    selectedStage: 'countryside',
     selectedVehicle: 'ranger',
+    climbSetup: { ...DEFAULT_CLIMB_SETUP },
+    aiAutoTune: true,
+    gyroEnabled: false,
     unlockedVehicles: {
       ranger: true,
-      monster: false,
-      buggy: false,
+      monster: true,
+      buggy: true,
       muscle: false,
       superbike: false,
       cheetah_vc: false,
@@ -602,6 +870,15 @@ export function createDefaultSave(): SaveData {
       cheetah_vc: 'carbon',
       donk_leonida: 'alloy',
     },
+    vehicleClimbTires: {
+      ranger: 'all_terrain',
+      monster: 'mud_bogger',
+      buggy: 'all_terrain',
+      muscle: 'all_terrain',
+      superbike: 'all_terrain',
+      cheetah_vc: 'rock_crawler',
+      donk_leonida: 'all_terrain',
+    },
     unlockedWheels: {
       steel: true,
       beadlock: false,
@@ -623,14 +900,31 @@ export function createDefaultSave(): SaveData {
       whip_flag: true,
       snorkel: false,
     },
+    vehicleTuningParts: {
+      ranger: ['landing_boost'],
+      monster: [],
+      buggy: ['landing_boost'],
+      muscle: [],
+      superbike: [],
+      cheetah_vc: ['landing_boost'],
+      donk_leonida: [],
+    },
+    unlockedTuningParts: {
+      landing_boost: true,
+      wings: false,
+      overcharged_turbo: false,
+      coin_boost: false,
+      jump_shocks: false,
+      winter_tires: false,
+    },
     vehicleNeons: {
-      ranger: 'leonida_cyan',
-      monster: 'sunset_amber',
-      buggy: 'miami_mint',
-      muscle: 'sunset_amber',
-      superbike: 'vice_pink',
-      cheetah_vc: 'leonida_cyan',
-      donk_leonida: 'vice_pink',
+      ranger: 'off',
+      monster: 'off',
+      buggy: 'off',
+      muscle: 'off',
+      superbike: 'off',
+      cheetah_vc: 'off',
+      donk_leonida: 'off',
     },
     vehicleLiveries: {
       ranger: 'sunset_rally',
@@ -643,8 +937,8 @@ export function createDefaultSave(): SaveData {
     },
     upgrades: {
       ranger: { engine: 1, suspension: 1, tires: 1, awd: 1, fuel: 1 },
-      monster: { engine: 0, suspension: 0, tires: 0, awd: 0, fuel: 0 },
-      buggy: { engine: 0, suspension: 0, tires: 0, awd: 0, fuel: 0 },
+      monster: { engine: 1, suspension: 1, tires: 1, awd: 1, fuel: 1 },
+      buggy: { engine: 1, suspension: 1, tires: 1, awd: 1, fuel: 1 },
       muscle: { engine: 0, suspension: 0, tires: 0, awd: 0, fuel: 0 },
       superbike: { engine: 0, suspension: 0, tires: 0, awd: 0, fuel: 0 },
       cheetah_vc: { engine: 1, suspension: 1, tires: 1, awd: 1, fuel: 1 },
@@ -691,6 +985,10 @@ export function getStageById(id: StageId): StageConfig {
 
 export function getVehicleById(id: VehicleId): VehicleConfig {
   return VEHICLES.find((v) => v.id === id) ?? VEHICLES[0];
+}
+
+export function getClimbTireById(id: string): ClimbTireConfig {
+  return CLIMB_TIRES.find((t) => t.id === id) ?? CLIMB_TIRES[0];
 }
 
 export function getUpgradeCost(key: UpgradeKey, currentLevel: number): number {

@@ -1,23 +1,27 @@
 import React from 'react';
-import { Home, Play, RotateCcw, Settings, Trophy, Warehouse } from 'lucide-react';
+import { Home, Play, RotateCcw, Settings, Smartphone, Trophy, Warehouse } from 'lucide-react';
 import { motion } from 'motion/react';
-import { RunSummary } from '../types/game';
+import { RunSummary, TouchControlsMode } from '../types/game';
 import { CoinIcon } from './GameIcons';
 
 interface PauseModalProps {
   stageName: string;
+  touchControlsMode: TouchControlsMode;
+  onCycleTouchControls: () => void;
   onResume: () => void;
   onRestart: () => void;
-  onOpenGarage: () => void;
+  onOpenPaddock: () => void;
   onOpenSettings: () => void;
   onGoHome: () => void;
 }
 
 export const PauseModal: React.FC<PauseModalProps> = ({
   stageName,
+  touchControlsMode,
+  onCycleTouchControls,
   onResume,
   onRestart,
-  onOpenGarage,
+  onOpenPaddock,
   onOpenSettings,
   onGoHome,
 }) => (
@@ -53,17 +57,31 @@ export const PauseModal: React.FC<PauseModalProps> = ({
           className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#111923] py-3 font-display text-sm font-bold tracking-wider uppercase hover:border-white/40"
         >
           <RotateCcw className="h-4 w-4" />
-          RESTART STAGE
+          RESTART CLIMB
+        </button>
+
+        <button
+          type="button"
+          onClick={onCycleTouchControls}
+          className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-[#111923] px-3.5 py-2.5 font-display text-xs font-bold tracking-wider uppercase hover:border-emerald-400"
+        >
+          <span className="flex items-center gap-2 text-slate-200">
+            <Smartphone className="h-4 w-4 text-emerald-300" />
+            TOUCH PEDALS
+          </span>
+          <span className="font-mono-num rounded bg-emerald-500/20 px-2 py-0.5 text-[11px] font-black text-emerald-300">
+            {touchControlsMode.toUpperCase()}
+          </span>
         </button>
 
         <div className="grid grid-cols-2 gap-2.5">
           <button
             type="button"
-            onClick={onOpenGarage}
+            onClick={onOpenPaddock}
             className="flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#111923] py-3 font-display text-sm font-bold tracking-wider uppercase hover:border-sky-400"
           >
             <Warehouse className="h-4 w-4 text-sky-300" />
-            GARAGE
+            PADDOCK
           </button>
 
           <button
@@ -82,7 +100,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
           className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#111923] py-3 font-display text-sm font-bold tracking-wider text-slate-300 uppercase hover:border-white/40 hover:text-white"
         >
           <Home className="h-4 w-4" />
-          MAIN MENU
+          SHOWROOM
         </button>
       </div>
     </motion.div>
@@ -92,14 +110,14 @@ export const PauseModal: React.FC<PauseModalProps> = ({
 interface GameOverModalProps {
   summary: RunSummary;
   onRetry: () => void;
-  onOpenGarage: () => void;
+  onOpenPaddock: () => void;
   onGoHome: () => void;
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
   summary,
   onRetry,
-  onOpenGarage,
+  onOpenPaddock,
   onGoHome,
 }) => (
   <div className="fixed inset-0 z-20 flex items-center justify-center bg-slate-950/82 p-4">
@@ -114,7 +132,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           {summary.reason}
         </div>
         <h2 className="mt-2 font-display text-3xl font-extrabold tracking-wider uppercase italic">
-          RUN COMPLETE
+          CLIMB ENDED
         </h2>
         <p className="text-xs font-bold tracking-widest text-slate-400 uppercase">
           {summary.stageName}
@@ -135,6 +153,17 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
         <div className="mt-0.5 font-mono-num text-xs font-bold text-slate-400">
           STAGE BEST: {summary.stageBestMeters}m
         </div>
+        {summary.aiMarginMeters !== null && (
+          <div
+            className={`mt-1.5 font-mono-num text-xs font-extrabold uppercase ${
+              summary.aiMarginMeters >= 0 ? 'text-emerald-300' : 'text-cyan-300'
+            }`}
+          >
+            {summary.aiMarginMeters >= 0
+              ? `BEAT AI RACER BY +${summary.aiMarginMeters}m`
+              : `AI RACER LED BY +${Math.abs(summary.aiMarginMeters)}m`}
+          </div>
+        )}
       </div>
 
       {/* 4 Telemetry Stats */}
@@ -181,17 +210,17 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[#ffd34e] to-[#f59e0b] py-3.5 font-display text-base font-black tracking-wider text-slate-950 uppercase italic shadow-lg hover:brightness-105"
         >
           <RotateCcw className="h-5 w-5" />
-          RACE AGAIN
+          CLIMB AGAIN
         </button>
 
         <div className="grid grid-cols-2 gap-2.5">
           <button
             type="button"
-            onClick={onOpenGarage}
+            onClick={onOpenPaddock}
             className="flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#111923] py-2.5 font-display text-sm font-bold tracking-wider uppercase hover:border-sky-400"
           >
             <Warehouse className="h-4 w-4 text-sky-300" />
-            GARAGE
+            PADDOCK
           </button>
 
           <button
@@ -200,7 +229,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
             className="flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#111923] py-2.5 font-display text-sm font-bold tracking-wider text-slate-300 uppercase hover:border-white/40 hover:text-white"
           >
             <Home className="h-4 w-4" />
-            MENU
+            SHOWROOM
           </button>
         </div>
       </div>

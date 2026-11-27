@@ -19,9 +19,11 @@ import {
   ACCESSORY_DEFS,
   getUpgradeCost,
   LIVERY_DEFS,
+  MAX_EQUIPPED_PARTS,
   MAX_UPGRADE_LEVEL,
   NEON_COLORS,
   PAINT_SWATCHES,
+  TUNING_PART_DEFS,
   UPGRADE_DEFS,
   VEHICLES,
   WHEEL_STYLES,
@@ -35,6 +37,7 @@ import {
   LiveryId,
   NeonColorId,
   SaveData,
+  TuningPartId,
   UpgradeKey,
   VehicleAccessoryId,
   VehicleId,
@@ -59,6 +62,7 @@ interface GarageModalProps {
   onSetLivery: (vehicleId: VehicleId, liveryId: LiveryId) => void;
   onSelectOrUnlockWheel: (vehicleId: VehicleId, wheelId: WheelStyleId) => void;
   onToggleOrUnlockAccessory: (vehicleId: VehicleId, accId: VehicleAccessoryId) => void;
+  onToggleOrUnlockTuningPart: (vehicleId: VehicleId, partId: TuningPartId) => void;
   onBuyUpgrade: (vehicleId: VehicleId, key: UpgradeKey) => void;
   onOpenUpgrades: () => void;
 }
@@ -77,6 +81,7 @@ export const GarageModal: React.FC<GarageModalProps> = ({
   onSetLivery,
   onSelectOrUnlockWheel,
   onToggleOrUnlockAccessory,
+  onToggleOrUnlockTuningPart,
   onBuyUpgrade,
   onOpenUpgrades,
 }) => {
@@ -88,6 +93,7 @@ export const GarageModal: React.FC<GarageModalProps> = ({
     initialVehicleId ?? save.selectedVehicle,
   );
   const [drawer, setDrawer] = useState<GarageDrawer>(null);
+  const [partsTab, setPartsTab] = useState<'TUNING' | 'GEAR'>('TUNING');
   const [camPreset, setCamPreset] = useState<GarageCameraPreset>('profile');
   const [lightsOn, setLightsOn] = useState<boolean>(true);
 
@@ -104,6 +110,7 @@ export const GarageModal: React.FC<GarageModalProps> = ({
   const activeWheelId = save.vehicleWheels[vehicle.id] || 'steel';
   const activeAccessories = save.vehicleAccessories?.[vehicle.id] ?? ['lightbar'];
   const accessoriesKey = activeAccessories.join(',');
+  const activeTuningParts = save.vehicleTuningParts?.[vehicle.id] ?? [];
   const activeNeonId = save.vehicleNeons?.[vehicle.id] ?? 'off';
   const activeLiveryId = save.vehicleLiveries?.[vehicle.id] ?? 'clean';
   const levels = save.upgrades[vehicle.id];
@@ -120,15 +127,15 @@ export const GarageModal: React.FC<GarageModalProps> = ({
 
   const powerScore = Math.min(
     400,
-    Math.round(145 * vehicle.powerMult + (levels.engine ?? 0) * 19),
+    Math.round((145 * vehicle.powerMult + (levels.engine ?? 0) * 19) * (save.tuning?.enginePower ?? 1)),
   );
   const suspScore = Math.min(
     400,
-    Math.round(160 * vehicle.springMult + (levels.suspension ?? 0) * 20),
+    Math.round((160 * vehicle.springMult + (levels.suspension ?? 0) * 20) * (save.tuning?.suspensionStiffness ?? 1)),
   );
   const gripScore = Math.min(
     400,
-    Math.round(150 * vehicle.gripMult + (levels.tires ?? 0) * 20 + (levels.awd ?? 0) * 4),
+    Math.round((150 * vehicle.gripMult + (levels.tires ?? 0) * 20 + (levels.awd ?? 0) * 5) * (save.tuning?.tireGrip ?? 1)),
   );
   const fuelScore = Math.min(
     400,
@@ -166,7 +173,10 @@ export const GarageModal: React.FC<GarageModalProps> = ({
     };
   }, [graphicsQuality]);
 
-  // Update 3D turntable whenever inspected vehicle, paint, wheel, accessories, neon, or livery change
+  const upgradesKey = `${levels.engine}_${levels.suspension}_${levels.tires}_${levels.awd}_${levels.fuel}`;
+  const rideHeight = save.tuning?.rideHeight ?? 0;
+
+  // Update 3D turntable whenever inspected vehicle, customization, upgrades, or ride height change
   useEffect(() => {
     ctrlRef.current?.setVehicle(
       inspectedId,
@@ -176,9 +186,11 @@ export const GarageModal: React.FC<GarageModalProps> = ({
       activeAccessories,
       activeNeonId,
       activeLiveryId,
+      levels,
+      rideHeight,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inspectedId, activePaintId, activeWheelId, accessoriesKey, activeNeonId, activeLiveryId]);
+  }, [inspectedId, activePaintId, activeWheelId, accessoriesKey, activeNeonId, activeLiveryId, upgradesKey, rideHeight]);
 
   const selectCameraPreset = (preset: GarageCameraPreset) => {
     setCamPreset(preset);
@@ -319,13 +331,13 @@ export const GarageModal: React.FC<GarageModalProps> = ({
             <div className="rounded-lg border border-white/10 bg-[#111923] px-2 py-1 text-slate-300">
               TOP SPEED:{' '}
               <span className="font-mono-num text-white">
-                {Math.round(vehicle.topSpeedMs * 3.6 * (1 + 0.045 * (levels.engine ?? 0)))} km/h
+                {Math.round(vehicle.topSpeedMs * 3.6 * (1 + 0.045 * (levels.engine ?? 0)) * Math.sqrt(save.tuning?.gearRatio ?? 1))} km/h
               </span>
             </div>
             <div className="rounded-lg border border-white/10 bg-[#111923] px-2 py-1 text-slate-300">
               AIR CTRL:{' '}
               <span className="font-mono-num text-sky-300">
-                {vehicle.airControlMult.toFixed(2)}x
+                {(vehicle.airControlMult * (save.tuning?.airControl ?? 1)).toFixed(2)}x
               </span>
             </div>
           </div>
@@ -569,60 +581,140 @@ export const GarageModal: React.FC<GarageModalProps> = ({
           )}
 
           {drawer === 'PARTS' && (
-            <div className="panel-bevel w-64 rounded-2xl border border-white/20 p-3 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-36 max-sm:z-30 max-sm:w-auto sm:w-68 sm:p-3.5">
-              <div className="mb-2.5 flex items-center justify-between font-display text-xs font-extrabold tracking-widest text-orange-300 uppercase italic">
-                <span>3D TRAIL ACCESSORIES</span>
+            <div className="panel-bevel w-72 rounded-2xl border border-white/20 p-3 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-36 max-sm:z-30 max-sm:w-auto sm:w-80 sm:p-3.5">
+              <div className="mb-2 flex items-center justify-between font-display text-xs font-extrabold tracking-widest text-orange-300 uppercase italic">
+                <span>PARTS &amp; TRAIL GEAR</span>
                 <button
                   type="button"
                   onClick={() => setDrawer(null)}
-                  className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] text-slate-300 sm:hidden"
+                  className="rounded border border-white/15 px-2 py-1 text-[10px] text-slate-300 sm:hidden"
                 >
                   CLOSE
                 </button>
               </div>
-              <div className="flex flex-col gap-2">
-                {ACCESSORY_DEFS.map((acc) => {
-                  const owned = save.unlockedAccessories?.[acc.id] ?? false;
-                  const equipped = activeAccessories.includes(acc.id);
-                  const canBuy = save.coins >= acc.price;
-                  return (
-                    <button
-                      key={acc.id}
-                      type="button"
-                      onClick={() => onToggleOrUnlockAccessory(vehicle.id, acc.id)}
-                      disabled={!owned && !canBuy}
-                      className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition ${
-                        equipped
-                          ? 'border-orange-400 bg-orange-500/20 text-white'
-                          : owned || canBuy
-                            ? 'border-white/15 bg-slate-900 text-slate-200 hover:border-white/35'
-                            : 'border-white/5 bg-slate-900/50 text-slate-500'
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white">{acc.name}</div>
-                        <div className="truncate text-[10px] text-slate-400">
-                          {acc.desc}
-                        </div>
-                      </div>
-                      {equipped ? (
-                        <span className="shrink-0 text-[10px] font-extrabold text-orange-300">
-                          ON
-                        </span>
-                      ) : owned ? (
-                        <span className="shrink-0 text-[10px] font-extrabold text-emerald-300">
-                          EQUIP
-                        </span>
-                      ) : (
-                        <span className="flex shrink-0 items-center gap-1 text-xs font-bold text-amber-300">
-                          <CoinIcon className="h-3.5 w-3.5" />
-                          {acc.price}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+
+              {/* 2-Tab Switch: HCR2 Active Tuning Parts vs 3D Trail Accessories */}
+              <div className="mb-2.5 grid grid-cols-2 gap-1.5 rounded-xl bg-slate-950/70 p-1">
+                <button
+                  type="button"
+                  onClick={() => setPartsTab('TUNING')}
+                  className={`min-h-[36px] rounded-lg font-display text-xs font-extrabold tracking-wider uppercase transition ${
+                    partsTab === 'TUNING'
+                      ? 'bg-orange-500/25 text-orange-200 ring-1 ring-orange-400/60'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  TUNING ({activeTuningParts.length}/{MAX_EQUIPPED_PARTS})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPartsTab('GEAR')}
+                  className={`min-h-[36px] rounded-lg font-display text-xs font-extrabold tracking-wider uppercase transition ${
+                    partsTab === 'GEAR'
+                      ? 'bg-sky-500/25 text-sky-200 ring-1 ring-sky-400/60'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  3D GEAR
+                </button>
               </div>
+
+              {partsTab === 'TUNING' ? (
+                <div className="frontier-scroll flex max-h-[240px] flex-col gap-2 overflow-y-auto pr-1 sm:max-h-[310px]">
+                  {TUNING_PART_DEFS.map((part) => {
+                    const owned = save.unlockedTuningParts?.[part.id] ?? false;
+                    const equipped = activeTuningParts.includes(part.id);
+                    const slotFull = !equipped && activeTuningParts.length >= MAX_EQUIPPED_PARTS;
+                    const canBuy = save.coins >= part.price;
+                    const disabled = (!owned && !canBuy) || (owned && slotFull);
+                    return (
+                      <button
+                        key={part.id}
+                        type="button"
+                        onClick={() => onToggleOrUnlockTuningPart(vehicle.id, part.id)}
+                        disabled={disabled}
+                        className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition ${
+                          equipped
+                            ? 'border-orange-400 bg-orange-500/20 text-white'
+                            : !disabled
+                              ? 'border-white/15 bg-slate-900 text-slate-200 hover:border-white/35'
+                              : 'border-white/5 bg-slate-900/50 text-slate-500'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-white">{part.name}</span>
+                            <span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wider text-orange-300">
+                              {part.tag}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-[10px] leading-tight text-slate-400">
+                            {part.desc}
+                          </div>
+                        </div>
+                        {equipped ? (
+                          <span className="shrink-0 text-[10px] font-extrabold text-orange-300">
+                            ON
+                          </span>
+                        ) : owned ? (
+                          <span className="shrink-0 text-[10px] font-extrabold text-emerald-300">
+                            {slotFull ? 'FULL' : 'EQUIP'}
+                          </span>
+                        ) : (
+                          <span className="flex shrink-0 items-center gap-1 text-xs font-bold text-amber-300">
+                            <CoinIcon className="h-3.5 w-3.5" />
+                            {part.price}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {ACCESSORY_DEFS.map((acc) => {
+                    const owned = save.unlockedAccessories?.[acc.id] ?? false;
+                    const equipped = activeAccessories.includes(acc.id);
+                    const canBuy = save.coins >= acc.price;
+                    return (
+                      <button
+                        key={acc.id}
+                        type="button"
+                        onClick={() => onToggleOrUnlockAccessory(vehicle.id, acc.id)}
+                        disabled={!owned && !canBuy}
+                        className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition ${
+                          equipped
+                            ? 'border-orange-400 bg-orange-500/20 text-white'
+                            : owned || canBuy
+                              ? 'border-white/15 bg-slate-900 text-slate-200 hover:border-white/35'
+                              : 'border-white/5 bg-slate-900/50 text-slate-500'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-white">{acc.name}</div>
+                          <div className="truncate text-[10px] text-slate-400">
+                            {acc.desc}
+                          </div>
+                        </div>
+                        {equipped ? (
+                          <span className="shrink-0 text-[10px] font-extrabold text-orange-300">
+                            ON
+                          </span>
+                        ) : owned ? (
+                          <span className="shrink-0 text-[10px] font-extrabold text-emerald-300">
+                            EQUIP
+                          </span>
+                        ) : (
+                          <span className="flex shrink-0 items-center gap-1 text-xs font-bold text-amber-300">
+                            <CoinIcon className="h-3.5 w-3.5" />
+                            {acc.price}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

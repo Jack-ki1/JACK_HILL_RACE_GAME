@@ -96,45 +96,101 @@ export function createTerrainStrataTexture(
 
   const grad = ctx.createLinearGradient(0, 0, 0, 512);
   grad.addColorStop(0, topColor);
-  grad.addColorStop(0.08, upperDirt);
-  grad.addColorStop(0.5, lowerDirt);
-  grad.addColorStop(1, '#120a06');
+  grad.addColorStop(0.05, upperDirt);
+  grad.addColorStop(0.28, lowerDirt);
+  grad.addColorStop(0.68, '#2b1b13');
+  grad.addColorStop(1, '#100a07');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 512, 512);
 
-  // Crisp fractured sedimentary rock layers with angled shelves
-  for (let b = 0; b < 28; b++) {
-    const by = 14 + b * 18;
-    ctx.fillStyle = b % 2 === 0 ? 'rgba(0,0,0,0.24)' : 'rgba(255,244,230,0.09)';
+  // Dark rich topsoil band with subtle organic root tendrils near top crust
+  const topsoilGrad = ctx.createLinearGradient(0, 14, 0, 86);
+  topsoilGrad.addColorStop(0, 'rgba(20, 12, 6, 0.55)');
+  topsoilGrad.addColorStop(1, 'rgba(20, 12, 6, 0)');
+  ctx.fillStyle = topsoilGrad;
+  ctx.fillRect(0, 14, 512, 72);
+
+  ctx.strokeStyle = 'rgba(218, 178, 125, 0.24)';
+  ctx.lineWidth = 1.6;
+  for (let r = 0; r < 18; r++) {
+    let rx = (r * 31 + 12) % 512;
+    let ry = 18;
+    ctx.beginPath();
+    ctx.moveTo(rx, ry);
+    for (let seg = 0; seg < 4; seg++) {
+      rx += (pseudoNoise(r, seg, 7) - 0.5) * 20;
+      ry += 10 + pseudoNoise(r, seg, 13) * 10;
+      ctx.lineTo(rx, ry);
+    }
+    ctx.stroke();
+  }
+
+  // Striated sedimentary rock bands with realistic dip & fault offsets
+  for (let b = 0; b < 26; b++) {
+    const by = 44 + b * 18;
+    const isLightBand = b % 3 === 1;
+    ctx.fillStyle = isLightBand
+      ? 'rgba(255, 240, 220, 0.11)'
+      : b % 2 === 0
+        ? 'rgba(0, 0, 0, 0.28)'
+        : 'rgba(65, 42, 28, 0.22)';
     ctx.beginPath();
     ctx.moveTo(0, by);
     for (let x = 0; x <= 512; x += 16) {
-      const jag = (pseudoNoise(x * 0.08, b, 11) - 0.5) * 9 + Math.sin(x * 0.03 + b) * 4;
+      const jag =
+        (pseudoNoise(x * 0.06, b, 11) - 0.5) * 10 +
+        Math.sin(x * 0.025 + b * 0.8) * 5;
       ctx.lineTo(x, by + jag);
     }
-    ctx.lineTo(512, by + 11);
-    ctx.lineTo(0, by + 11);
+    ctx.lineTo(512, by + 13);
+    ctx.lineTo(0, by + 13);
     ctx.closePath();
     ctx.fill();
 
-    // Dark crevice fracture line under each rock shelf
-    ctx.strokeStyle = 'rgba(10, 6, 4, 0.42)';
-    ctx.lineWidth = 1.6;
+    // Fracture crevice shadow under each rock ledge
+    ctx.strokeStyle = 'rgba(8, 5, 4, 0.48)';
+    ctx.lineWidth = 1.7;
     ctx.beginPath();
     for (let x = 0; x <= 512; x += 16) {
-      const jag = (pseudoNoise(x * 0.08, b, 11) - 0.5) * 9 + Math.sin(x * 0.03 + b) * 4;
+      const jag =
+        (pseudoNoise(x * 0.06, b, 11) - 0.5) * 10 +
+        Math.sin(x * 0.025 + b * 0.8) * 5;
       if (x === 0) ctx.moveTo(x, by + jag);
       else ctx.lineTo(x, by + jag);
     }
     ctx.stroke();
   }
 
-  // Sharp angular stone fragments & crevice fissures
-  for (let i = 0; i < 420; i++) {
+  // Embedded rounded boulders & cobbles in subsoil strata
+  for (let s = 0; s < 48; s++) {
+    const sx = pseudoNoise(s, 3, 29) * 512;
+    const sy = 56 + pseudoNoise(s, 9, 31) * 420;
+    const rw = 8 + (s % 16);
+    const rh = 5 + (s % 9);
+    const ang = (pseudoNoise(s, 5, 19) - 0.5) * 0.7;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(ang);
+    ctx.fillStyle = s % 2 === 0 ? 'rgba(92, 86, 80, 0.55)' : 'rgba(56, 48, 42, 0.62)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.48)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 250, 240, 0.14)';
+    ctx.beginPath();
+    ctx.ellipse(-rw * 0.15, -rh * 0.25, rw * 0.55, rh * 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Fine mineral grit & angular gravel flecks
+  for (let i = 0; i < 520; i++) {
     const px = (i * 97) % 512;
     const py = 16 + ((i * 173) % 484);
-    const rx = 3 + (i % 14);
-    const ry = 1.8 + (i % 6);
+    const rx = 2.5 + (i % 9);
+    const ry = 1.5 + (i % 5);
     ctx.fillStyle =
       i % 3 === 0 ? 'rgba(0,0,0,0.34)' : i % 3 === 1 ? 'rgba(255,245,230,0.12)' : 'rgba(42,24,14,0.34)';
     ctx.save();
@@ -144,15 +200,15 @@ export function createTerrainStrataTexture(
     ctx.restore();
   }
 
-  // Crisp overhanging lip & shadow band for terrain profile definition
-  const lipGrad = ctx.createLinearGradient(0, 0, 0, 38);
+  // Crisp overhanging top crust lip & deep undercut ambient occlusion band
+  const lipGrad = ctx.createLinearGradient(0, 0, 0, 44);
   lipGrad.addColorStop(0, topColor);
   lipGrad.addColorStop(0.24, topColor);
-  lipGrad.addColorStop(0.32, 'rgba(0,0,0,0.62)');
-  lipGrad.addColorStop(0.68, 'rgba(0,0,0,0.22)');
+  lipGrad.addColorStop(0.32, 'rgba(0,0,0,0.72)');
+  lipGrad.addColorStop(0.66, 'rgba(0,0,0,0.24)');
   lipGrad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = lipGrad;
-  ctx.fillRect(0, 0, 512, 38);
+  ctx.fillRect(0, 0, 512, 44);
 
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -179,30 +235,30 @@ export function createRoadTrackTexture(
   const isAsphalt = baseColor.toLowerCase() === '#363b4d';
 
   if (isAsphalt) {
-    // Realistic coastal highway with weathered shoulder curbs & sharp markings
+    // Realistic Vice coastal causeway with concrete curbs, sand shoulders & weathered tarmac
     const roadGrad = ctx.createLinearGradient(0, 0, 0, 512);
-    roadGrad.addColorStop(0, edgeColor);
-    roadGrad.addColorStop(0.14, '#8b6856');
-    roadGrad.addColorStop(0.22, '#222631');
-    roadGrad.addColorStop(0.5, '#2f3442');
-    roadGrad.addColorStop(0.78, '#222631');
-    roadGrad.addColorStop(0.86, '#8b6856');
-    roadGrad.addColorStop(1, edgeColor);
+    roadGrad.addColorStop(0, '#d8b48a');
+    roadGrad.addColorStop(0.11, '#8c8f9c');
+    roadGrad.addColorStop(0.16, '#232834');
+    roadGrad.addColorStop(0.5, '#303645');
+    roadGrad.addColorStop(0.84, '#232834');
+    roadGrad.addColorStop(0.89, '#8c8f9c');
+    roadGrad.addColorStop(1, '#d8b48a');
     ctx.fillStyle = roadGrad;
     ctx.fillRect(0, 0, 512, 512);
 
     // Asphalt aggregate grain & hairline cracks
-    for (let i = 0; i < 1600; i++) {
+    for (let i = 0; i < 1800; i++) {
       const x = (i * 73) % 512;
       const y = (i * 137) % 512;
       ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.28)';
       ctx.fillRect(x, y, 2, 2);
     }
-    ctx.strokeStyle = 'rgba(10,12,18,0.45)';
-    ctx.lineWidth = 1.4;
-    for (let c = 0; c < 18; c++) {
+    ctx.strokeStyle = 'rgba(10,12,18,0.48)';
+    ctx.lineWidth = 1.5;
+    for (let c = 0; c < 22; c++) {
       const sx = (c * 89) % 512;
-      const sy = 135 + ((c * 61) % 240);
+      const sy = 105 + ((c * 61) % 300);
       ctx.beginPath();
       ctx.moveTo(sx, sy);
       ctx.lineTo(sx + 18, sy + (c % 2 === 0 ? 11 : -9));
@@ -210,25 +266,26 @@ export function createRoadTrackTexture(
       ctx.stroke();
     }
 
-    ctx.fillStyle = 'rgba(241, 245, 249, 0.86)';
-    ctx.fillRect(0, 122, 512, 6);
-    ctx.fillRect(0, 384, 512, 6);
+    // Crisp outer white fog lines + dashed amber center line
+    ctx.fillStyle = 'rgba(248, 250, 252, 0.88)';
+    ctx.fillRect(0, 94, 512, 7);
+    ctx.fillRect(0, 411, 512, 7);
 
-    ctx.fillStyle = '#f59e0b';
+    ctx.fillStyle = '#fbbf24';
     for (let x = 14; x < 512; x += 64) {
       ctx.fillRect(x, 249, 36, 14);
     }
   } else {
-    // Rugged off-road rock & packed trail surface with stratified stone crevices & ruts
+    // Rugged off-road trail with turf/verge edges, compacted wheel ruts & embedded gravel
     const roadGrad = ctx.createLinearGradient(0, 0, 0, 512);
     roadGrad.addColorStop(0, edgeColor);
-    roadGrad.addColorStop(0.15, baseColor);
-    roadGrad.addColorStop(0.28, dirtColor);
-    roadGrad.addColorStop(0.42, '#3d2413');
+    roadGrad.addColorStop(0.14, baseColor);
+    roadGrad.addColorStop(0.26, dirtColor);
+    roadGrad.addColorStop(0.39, '#392111');
     roadGrad.addColorStop(0.5, dirtColor);
-    roadGrad.addColorStop(0.58, '#3d2413');
-    roadGrad.addColorStop(0.72, dirtColor);
-    roadGrad.addColorStop(0.85, baseColor);
+    roadGrad.addColorStop(0.61, '#392111');
+    roadGrad.addColorStop(0.74, dirtColor);
+    roadGrad.addColorStop(0.86, baseColor);
     roadGrad.addColorStop(1, edgeColor);
     ctx.fillStyle = roadGrad;
     ctx.fillRect(0, 0, 512, 512);
@@ -248,28 +305,28 @@ export function createRoadTrackTexture(
     }
 
     // Sharp scattered gravel chips, pebbles & mineral grit
-    for (let i = 0; i < 1400; i++) {
+    for (let i = 0; i < 1600; i++) {
       const x = (i * 67) % 512;
       const y = (i * 131) % 512;
       const w = 2 + (i % 5);
       const h = 1.5 + (i % 4);
-      ctx.fillStyle = i % 3 === 0 ? 'rgba(255,248,238,0.16)' : 'rgba(12,6,3,0.28)';
+      ctx.fillStyle = i % 3 === 0 ? 'rgba(255,248,238,0.16)' : 'rgba(12,6,3,0.3)';
       ctx.fillRect(x, y, w, h);
     }
 
     // Crisp off-road mud-terrain lug impressions in the two wheel tracks
-    ctx.strokeStyle = 'rgba(0,0,0,0.24)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.26)';
     ctx.lineWidth = 3;
     for (let x = 0; x < 512; x += 22) {
       ctx.beginPath();
-      ctx.moveTo(x, 194);
-      ctx.lineTo(x + 9, 214);
-      ctx.moveTo(x, 234);
-      ctx.lineTo(x + 9, 214);
-      ctx.moveTo(x, 284);
-      ctx.lineTo(x + 9, 304);
-      ctx.moveTo(x, 324);
-      ctx.lineTo(x + 9, 304);
+      ctx.moveTo(x, 188);
+      ctx.lineTo(x + 9, 208);
+      ctx.moveTo(x, 228);
+      ctx.lineTo(x + 9, 208);
+      ctx.moveTo(x, 286);
+      ctx.lineTo(x + 9, 306);
+      ctx.moveTo(x, 326);
+      ctx.lineTo(x + 9, 306);
       ctx.stroke();
     }
   }
